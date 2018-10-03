@@ -17,29 +17,86 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from collections import deque
+import csv
 import math
+import warnings
 
 from scipy.io import wavfile
 import numpy as np
 import pandas as pd
 import scipy.signal
 
+import tgt
 from peakdetect import peakdetect
+
+# Make sure Pandas uses the bottleneck and numexpr libraries
+# (in they are installed).
+pd.set_option('compute.use_bottleneck', True)
+pd.set_option('compute.use_numexpr', True)
 
 __all__ = ['RIP']
 
 
 class RIP:
 
-    def __init__(self, wav_path):
+    def __init__(self, resp_data, samp_freq):
 
-        self.samp_freq, self.resp = wavfile.read(wav_path)
+        self.resp = resp_data
+        self.samp_freq = samp_freq
+        
         self.t = np.arange(len(self.resp)) / self.samp_freq
         self.dur = len(self.resp) / self.samp_freq
 
         self._peaks = None
         self._troughs = None
+
+        self.rel = None
+        self.range_bot = None
+        self.range_top = None
+
+    # Alternative initializers
+
+    @classmethod
+    def from_wav(cls, fname):
+        """Read respiratory data from a WAV file."""
+        samp_freq, resp = wavfile.read(fname)
+        return cls(resp, samp_freq)
+
+    @classmethod
+    def from_csv(cls, fname, samp_freq=None, delimiter=','):
+        """Read respiratory data from a CSV file.
+
+        If `samp_freq` is not specified, the CSV file should have two
+        columns: the first column should list time stamps and the second
+        column should list respiratory values.
+        """
+
+        tbl = np.loadtxt(fname, delimiter=delimiter)
+
+        if tbl.ndim == 1:
+            if samp_freq is None:
+                pass
+            else:
+                return cls(tbl, samp_freq)
+        elif tbl.shape[1] == 2:
+            if samp_freq is not None:
+                warnings.warn('Ignoring the timestamp column, assuming the '
+                              'sampling frequency of {}'.format(samp_freq))
+                return cls(tbl[:, 1], samp_freq)
+            else:
+                samp_freq = np.mean(np.diff(tbl[: 0]))
+                return cls(tbl[:, 1], samp_freq)
+        else:
+            raise ValueError('Input data has {} columns'
+                             'expected 2.'.format(tbl.shape[1]))
+
+    def idt(self, t, interpolation='nearest'):
+        '''Index respiratory signal by time. The time stamp is rounded to the
+        nearest sample.
+        '''
+
+        if interpolation == 'nearest':
+            return self.resp[np.round(np.array(t) * self.samp_freq).astype(int)]
 
     def resample(self, resamp_freq):
 
@@ -78,9 +135,7 @@ class RIP:
         self.resp = (self.resp - np.mean(self.resp)) / np.std(self.resp)
 
     def find_cycles(self, win_len=10, delta=1, lookahead=1):
-        """Locate peaks and troughs in the signal.
-
-        """
+        """Locate peaks and troughs in the signal."""
 
         resp_scaled = self._move_zscore(win_len * self.samp_freq)
         peaks, troughs = peakdetect(resp_scaled, delta=delta,
@@ -100,18 +155,21 @@ class RIP:
 
     @property
     def inhalations(self):
-        return np.stack([self._troughs[:-1], self._peaks],
-                        axis=1)
+        """Start and end times (in seconds) of inhalations."""
+        inh_samp = np.stack([self._troughs[:-1], self._peaks], axis=1)
+        return inh_samp / self.samp_freq
 
     @property
     def exhalations(self):
-        return np.stack([self._peaks, self._troughs[1:]],
-                        axis=1)
+        """Start and end times (in seconds) of exhalations"""
+        exh_samp = np.stack([self._peaks, self._troughs[1:]], axis=1)
+        return exh_samp / self.samp_freq
 
     @property
     def cycles(self):
-        return np.stack([self._troughs[:-1], self._troughs[1:]],
-                        axis=1)
+        """Start and end times (in seconds) of respiratory cycles"""
+        cycl_samp = np.stack([self._troughs[:-1], self._troughs[1:]], axis=1)
+        return cycl_samp / self.samp_freq
 
     def find_holds(self):
         pass
@@ -119,18 +177,16 @@ class RIP:
     def find_laughters(self):
         pass
 
-    def estimate_range(self, lo=5, hi=95):
+    def estimate_range(self, bot=5, top=95):
         """Calculate respiratory range.
 
         In order to exclude outlying observations, only include peaks
         and troughs lying inside the percentile range specified by
-        `lo` and `hi` (5th and 95th percentile by default).
+        `bot` and `top` (5th and 95th percentile by default).
         """
 
-        peak_vals = self.resp[self._peaks]
-        trough_vals = self.resp[self._troughs]
-
-        return np.percentile(trough_vals, lo), np.percentile(peak_vals, hi)
+        self.range_bot = np.percentile(self.resp[self._troughs], bot)
+        self.range_top = np.percentile(self.resp[self._peaks], top)
 
     def estimate_rel(self, lookbehind, min_len=1):
         """Estimate REL (resting expiratory level).
@@ -141,57 +197,21 @@ class RIP:
         length `lookbehind`.
         """
 
-        cycle_durs = self.cycles[:, 1] - self.cycles[:, 0]
+        lookbehind_samp = lookbehind * self.samp_freq
+        rel = np.zeros(len(self._troughs) - 1)
 
-        prev_durs = deque()
-        prev_troughs = deque()
-        rel = np.zeros(len(cycle_durs))
+        for i, trough in enumerate(self._troughs[:-1]):
 
-        # for dur, trough in np.nditer([cycle_durs, self._troughs[:-1]]):
-        for i, (dur, trough) in enumerate(zip(cycle_durs, self._troughs[:-1])):
+            prev_troughs = self._troughs[np.logical_and(
+                self._troughs < trough,
+                self._troughs > trough - lookbehind_samp)]
 
-            if len(prev_durs) < min_len:
-                rel[i] = np.nan
-            else:
-                # TODO: Skip the following loop. Perhaps use simple
-                # slicing or np.where instead of deques.
-                while sum(prev_durs) > lookbehind * self.samp_freq:
-                    prev_durs.popleft()
-                    prev_troughs.popleft()
-
+            if len(prev_troughs):
                 rel[i] = np.median(self.resp[prev_troughs])
-
-            prev_durs.append(dur)
-            prev_troughs.append(trough)
+            else:
+                rel[i] = np.nan
 
         self.rel = rel
-
-
-    def save_resp(self, filename, samp_freq, filetype='wav'):
-        """Save respiratory data to file."""
-
-        if filetype == 'wav':
-            wavfile.write(filename, data=self.resp, rate=self.samp_freq)
-        else:
-            raise ValueError('Illegal filetype: {}.'.format(filetype))
-
-    # def save_annotations(self, tiers=['cycles'], filetype='textgrid'):
-    #     """Save annotations to file."""
-
-    #     for bnd in zip(troughs, peaks):
-    #         # Convert samples to timestamps
-    #         bnd_start_time = bnd[0][0] / self.samp_freq
-    #         bnd_end_time = bnd[1][0] / self.samp_freq
-    #         # Add exhalation if needed
-    #         if prev_inh_offset is not None:
-    #             cycles.add_interval(
-    #                 tgt.Interval(prev_inh_offset, bnd_start_time, 'out'))
-    #         # Add inhalation
-    #         cycles.add_interval(
-    #             tgt.Interval(bnd_start_time, bnd_end_time, 'in'))
-    #         prev_inh_offset = bnd_end_time
-
-    #     self.cycles = cycles
 
     # == Parameter estimation ==
 
@@ -209,6 +229,46 @@ class RIP:
 
     def speech_delay(self):
         pass
+
+    # == Saving results to file ==
+
+    def save_resp(self, filename, samp_freq, filetype='wav'):
+        """Save respiratory data to file."""
+
+        if filetype == 'wav':
+            wavfile.write(filename, data=self.resp, rate=self.samp_freq)
+        elif filetype == 'table':
+            warnings.warn('Saving to a plain-text table. Only time stamps \
+            and respiratory values will be saved')
+
+            with open(filename, 'w') as fout:
+                csv_out = csv.writer(fout)
+                csv_out.writerows(zip(self.t, self.resp))
+        else:
+            raise ValueError('Unsupported filetype: {}.'.format(filetype))
+
+    def save_annotations(self, filename, tiers=['cycles'],
+                         filetype='textgrid'):
+        """Save annotations to file."""
+
+        if filetype not in ['textgrid', 'eaf', 'table']:
+            raise ValueError('Unsupported file type: {}'.format(filetype))
+
+        tg = tgt.TextGrid()
+
+        if 'cycles' in tiers:
+
+            cycles = tgt.IntervalTier(name='cycles')
+            for inh, exh in zip(self.inhalations, self.exhalations):
+                cycles.add_intervals(
+                    [tgt.Interval(inh[0], inh[1], 'in'),
+                     tgt.Interval(exh[0], exh[1], 'out')])
+
+            tg.add_tier(cycles)
+
+        if len(tg.tiers):
+            filetype = 'short' if filetype == 'textgrid' else filetype
+            tgt.write_to_file(tg, filename, format=filetype)
 
     # == Private methods ==
 
@@ -231,7 +291,6 @@ class RIP:
         analysis of breathing waveforms using BreathMetrics: a
         respiratory signal processing toolbox. Chemical Senses (in
         press).
-
         """
 
         l = len(self.resp)
@@ -240,6 +299,3 @@ class RIP:
         mar_right = math.floor((l + win_len) / 2)
         win[mar_left: mar_right] = 1
         return scipy.signal.fftconvolve(self.resp, win, mode='same') / win_len
-
-# == TODO ==
-# 1. feature estimation
