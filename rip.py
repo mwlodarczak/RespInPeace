@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from operator import itemgetter
 import csv
 import math
 import warnings
@@ -25,6 +26,7 @@ from scipy.io import wavfile
 import numpy as np
 import pandas as pd
 import scipy.signal
+import matplotlib.pyplot as plt
 
 import tgt
 from peakdetect import peakdetect
@@ -43,7 +45,7 @@ class RIP:
 
         self.resp = resp_data
         self.samp_freq = samp_freq
-        
+
         self.t = np.arange(len(self.resp)) / self.samp_freq
         self.dur = len(self.resp) / self.samp_freq
 
@@ -54,7 +56,10 @@ class RIP:
         self.range_bot = None
         self.range_top = None
 
-    # Alternative initializers
+        self.cycles = None
+        self.holds = None
+
+    # == Alternative initializers ==
 
     @classmethod
     def from_wav(cls, fname):
@@ -75,7 +80,7 @@ class RIP:
 
         if tbl.ndim == 1:
             if samp_freq is None:
-                pass
+                raise ValueError('Unable to infer sampling frequency.')
             else:
                 return cls(tbl, samp_freq)
         elif tbl.shape[1] == 2:
@@ -84,7 +89,7 @@ class RIP:
                               'sampling frequency of {}'.format(samp_freq))
                 return cls(tbl[:, 1], samp_freq)
             else:
-                samp_freq = np.mean(np.diff(tbl[: 0]))
+                samp_freq = np.mean(np.diff(tbl[:, 0]))
                 return cls(tbl[:, 1], samp_freq)
         else:
             raise ValueError('Input data has {} columns'
@@ -121,7 +126,7 @@ class RIP:
         By default, a 60-second (rectangular) window is used.
         """
 
-        low_passed = self._fft_smooth(60 * self.samp_freq)
+        low_passed = self._fft_smooth(win_len * self.samp_freq)
         self.resp = self.resp - low_passed
 
     def scale(self):
@@ -153,6 +158,115 @@ class RIP:
         self._peaks = np.array(peaks)[:, 0].astype('int')
         self._troughs = np.array(troughs)[:, 0].astype('int')
 
+        self.cycles = tgt.IntervalTier(name='cycles')
+        for inh, exh in zip(self.inhalations, self.exhalations):
+            self.cycles.add_intervals(
+                [tgt.Interval(inh[0], inh[1], 'in'),
+                 tgt.Interval(exh[0], exh[1], 'out')])
+
+    def _find_holds_within_interval(self, start, end, peak_prominence,
+                                    bins=100):
+        """Find respiratory holds within the respiratory interval
+        between start and end points."""
+
+        intr_resp = self.resp[round(start * self.samp_freq):
+                              round(end * self.samp_freq) + 1]
+        bin_vals, bin_edges = np.histogram(intr_resp, bins)
+
+        # Normalise the histogram.
+        bin_vals = bin_vals / sum(bin_vals)
+
+        # Get peaks whose prominence exceeds `peak_prominence`.
+        peaks = scipy.signal.argrelmax(bin_vals)[0]
+        peaks_prom = scipy.signal.peak_prominences(
+            bin_vals, peaks, wlen=5)[0]
+        peaks = peaks[peaks_prom > peak_prominence]
+
+        if len(peaks) == 0:
+            return None
+
+        peaks_prom = peaks_prom[peaks_prom > peak_prominence]
+        peaks = peaks[peaks_prom.argsort()]
+
+        # Calculate peak ranges
+        *_, lo, hi = scipy.signal.peak_widths(bin_vals, peaks,
+                                              rel_height=0.8)
+        hold_top = bin_edges[np.round(hi).astype(int)]
+        hold_bot = bin_edges[np.round(lo).astype(int)]
+
+        # Find the corresponding time interval.
+        holds = []
+        for l, h in zip(hold_bot, hold_top):
+            within_hold_region = np.logical_and(
+                intr_resp >= min(l, h), intr_resp <= max(l, h)).astype(np.int)
+            hold_cand = self._find_islands(within_hold_region, 0)
+            hold_cand_durs = np.array([x[1] - x[0] for x in hold_cand])
+            holds.append(hold_cand[np.argmax(hold_cand_durs)])
+
+        # Merge overlapping hold regions.
+        holds_merged = []
+        prev_hold = None
+        for h in sorted(holds, key=itemgetter(0)):
+            if prev_hold is None:
+                prev_hold = h
+            elif h[0] <= prev_hold[1]:
+                prev_hold = (prev_hold[0], h[1])
+            else:
+                holds_merged.append(prev_hold)
+                prev_hold = h
+        holds_merged.append(prev_hold)
+
+        return holds_merged
+
+    def find_holds(self, min_hold_dur=0.15, min_hold_gap=0.15,
+                   peak_prominence=0.05):
+
+        # Identify inhalations and exhalation
+        if self.cycles is None:
+            self.find_cycles()
+
+        holds = []
+        for intr in self.cycles:
+            intr_holds = self._find_holds_within_interval(
+                intr.start_time, intr.end_time, peak_prominence)
+            if intr_holds is not None:
+                holds += [(intr.start_time + i[0] / self.samp_freq,
+                           intr.start_time + i[1] / self.samp_freq)
+                          for i in intr_holds]
+
+        if not holds:
+            return
+
+        # Merge holds which lie closer than min_hold_gap
+        holds_merged = []
+        prev_hold = None
+
+        for h in holds:
+            if prev_hold is None:
+                prev_hold = h
+            elif h[0] - prev_hold[1] < min_hold_gap:
+                prev_hold = (prev_hold[0], h[1])
+            else:
+                holds_merged.append(prev_hold)
+                prev_hold = h
+        holds_merged.append(prev_hold)
+
+        # Exclude holds shorter than min_hold_dur
+        self.holds = [tgt.Interval(h[0], h[1], 'hold')
+                      for h in holds_merged
+                      if h[1] - h[0] >= min_hold_dur]
+
+        for h in self.holds:
+            win_lo = int((h.start_time - 1) * self.samp_freq)
+            win_hi = int((h.end_time + 1) * self.samp_freq)
+            r = self.resp[win_lo:win_hi]
+            plt.plot(self.resp[win_lo:win_hi])
+            plt.axvspan(self.samp_freq, len(r) - self.samp_freq,
+                        color='red', alpha=0.3)
+            plt.show()
+
+        # Merge inhalation, exhalations and holds
+
     @property
     def inhalations(self):
         """Start and end times (in seconds) of inhalations."""
@@ -161,21 +275,13 @@ class RIP:
 
     @property
     def exhalations(self):
-        """Start and end times (in seconds) of exhalations"""
+        """Start and end tim
+es (in seconds) of exhalations"""
         exh_samp = np.stack([self._peaks, self._troughs[1:]], axis=1)
         return exh_samp / self.samp_freq
 
-    @property
-    def cycles(self):
-        """Start and end times (in seconds) of respiratory cycles"""
-        cycl_samp = np.stack([self._troughs[:-1], self._troughs[1:]], axis=1)
-        return cycl_samp / self.samp_freq
-
-    def find_holds(self):
-        pass
-
     def find_laughters(self):
-        pass
+        raise NotImplementedError
 
     def estimate_range(self, bot=5, top=95):
         """Calculate respiratory range.
@@ -215,20 +321,14 @@ class RIP:
 
     # == Parameter estimation ==
 
-    def estimate_feature_in_interval(self):
-        # The idea would be have a function which evaluates a function
-        # over an arbitrary parameter That parameter could of course
-        # be inh or exh!
-        pass
-
     def slope(self):
-        pass
+        raise NotImplementedError
 
     def amplitude(self):
-        pass
+        raise NotImplementedError
 
     def speech_delay(self):
-        pass
+        raise NotImplementedError
 
     # == Saving results to file ==
 
@@ -238,8 +338,8 @@ class RIP:
         if filetype == 'wav':
             wavfile.write(filename, data=self.resp, rate=self.samp_freq)
         elif filetype == 'table':
-            warnings.warn('Saving to a plain-text table. Only time stamps \
-            and respiratory values will be saved')
+            warnings.warn('Saving to a plain-text table. Only time stamps'
+                          'and respiratory values will be saved')
 
             with open(filename, 'w') as fout:
                 csv_out = csv.writer(fout)
@@ -271,6 +371,21 @@ class RIP:
             tgt.write_to_file(tg, filename, format=filetype)
 
     # == Private methods ==
+
+    @staticmethod
+    def _find_islands(a, min_gap):
+
+        a_diff = np.diff(np.pad(a, 1, 'constant'))
+        onsets = np.where(a_diff == 1)[0]
+        offsets = np.where(a_diff == -1)[0]
+
+        # Close short gaps
+        short_gaps = np.nonzero((onsets[1:] - offsets[:-1]) < min_gap)
+        if short_gaps:
+            onsets = np.delete(onsets, short_gaps[0] + 1)
+            offsets = np.delete(offsets, short_gaps[0])
+
+        return list(zip(onsets, offsets))
 
     def _move_zscore(self, win_len, noise_level=0):
         """Calculate z-score of the signal in a moving window
