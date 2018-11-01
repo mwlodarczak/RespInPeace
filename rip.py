@@ -19,6 +19,7 @@
 
 from operator import itemgetter
 import csv
+import sys
 import math
 import warnings
 
@@ -41,7 +42,7 @@ __all__ = ['RIP']
 
 class RIP:
 
-    def __init__(self, resp_data, samp_freq):
+    def __init__(self, resp_data, samp_freq, cycles=None):
 
         self.resp = resp_data
         self.samp_freq = samp_freq
@@ -56,19 +57,19 @@ class RIP:
         self.range_bot = None
         self.range_top = None
 
-        self.cycles = None
+        self.cycles = cycles
         self.holds = None
 
     # == Alternative initializers ==
 
     @classmethod
-    def from_wav(cls, fname):
+    def from_wav(cls, fname, cycles=None):
         """Read respiratory data from a WAV file."""
         samp_freq, resp = wavfile.read(fname)
-        return cls(resp, samp_freq)
+        return cls(resp, samp_freq, cycles)
 
     @classmethod
-    def from_csv(cls, fname, samp_freq=None, delimiter=','):
+    def from_csv(cls, fname, samp_freq=None, delimiter=',', cycles=None):
         """Read respiratory data from a CSV file.
 
         If `samp_freq` is not specified, the CSV file should have two
@@ -82,7 +83,7 @@ class RIP:
             if samp_freq is None:
                 raise ValueError('Unable to infer sampling frequency.')
             else:
-                return cls(tbl, samp_freq)
+                return cls(tbl, samp_freq, cycles)
         elif tbl.shape[1] == 2:
             if samp_freq is not None:
                 warnings.warn('Ignoring the timestamp column, assuming the '
@@ -90,7 +91,7 @@ class RIP:
                 return cls(tbl[:, 1], samp_freq)
             else:
                 samp_freq = np.mean(np.diff(tbl[:, 0]))
-                return cls(tbl[:, 1], samp_freq)
+                return cls(tbl[:, 1], samp_freq, cycles)
         else:
             raise ValueError('Input data has {} columns'
                              'expected 2.'.format(tbl.shape[1]))
@@ -139,7 +140,8 @@ class RIP:
 
         self.resp = (self.resp - np.mean(self.resp)) / np.std(self.resp)
 
-    def find_cycles(self, win_len=10, delta=1, lookahead=1):
+    def find_cycles(self, win_len=10, delta=1, lookahead=1,
+                    include_holds=True, **kwargs):
         """Locate peaks and troughs in the signal."""
 
         resp_scaled = self._move_zscore(win_len * self.samp_freq)
@@ -164,10 +166,14 @@ class RIP:
                 [tgt.Interval(inh[0], inh[1], 'in'),
                  tgt.Interval(exh[0], exh[1], 'out')])
 
+        if include_holds:
+            # Pass kwargs to find_holds.
+            self.find_holds(**kwargs)
+
     def _find_holds_within_interval(self, start, end, peak_prominence,
                                     bins=100):
         """Find respiratory holds within the respiratory interval
-        between start and end points."""
+        delimited by start and end."""
 
         intr_resp = self.resp[round(start * self.samp_freq):
                               round(end * self.samp_freq) + 1]
@@ -183,7 +189,7 @@ class RIP:
         peaks = peaks[peaks_prom > peak_prominence]
 
         if len(peaks) == 0:
-            return None
+            return
 
         peaks_prom = peaks_prom[peaks_prom > peak_prominence]
         peaks = peaks[peaks_prom.argsort()]
@@ -219,16 +225,16 @@ class RIP:
         return holds_merged
 
     def find_holds(self, min_hold_dur=0.15, min_hold_gap=0.15,
-                   peak_prominence=0.05):
+                   peak_prominence=0.05, bins=100, merge=True):
 
-        # Identify inhalations and exhalation
+        # Identify inhalations and exhalation if not present.
         if self.cycles is None:
             self.find_cycles()
 
         holds = []
         for intr in self.cycles:
             intr_holds = self._find_holds_within_interval(
-                intr.start_time, intr.end_time, peak_prominence)
+                intr.start_time, intr.end_time, peak_prominence, bins)
             if intr_holds is not None:
                 holds += [(intr.start_time + i[0] / self.samp_freq,
                            intr.start_time + i[1] / self.samp_freq)
@@ -237,8 +243,9 @@ class RIP:
         if not holds:
             return
 
-        # Merge holds which lie closer than min_hold_gap
-        holds_merged = []
+        # Merge holds which lie closer than min_hold_gap and
+        # exclude holds shorter than min_hold_dur.
+        self.holds = []
         prev_hold = None
 
         for h in holds:
@@ -247,25 +254,37 @@ class RIP:
             elif h[0] - prev_hold[1] < min_hold_gap:
                 prev_hold = (prev_hold[0], h[1])
             else:
-                holds_merged.append(prev_hold)
+                if prev_hold[1] - prev_hold[0] >= min_hold_dur:
+                    self.holds.append(tgt.Interval(*prev_hold, 'hold'))
                 prev_hold = h
-        holds_merged.append(prev_hold)
+        self.holds.append(tgt.Interval(*prev_hold, 'hold'))
 
-        # Exclude holds shorter than min_hold_dur
-        self.holds = [tgt.Interval(h[0], h[1], 'hold')
-                      for h in holds_merged
-                      if h[1] - h[0] >= min_hold_dur]
+    def _merge_holds(self):
 
-        for h in self.holds:
-            win_lo = int((h.start_time - 1) * self.samp_freq)
-            win_hi = int((h.end_time + 1) * self.samp_freq)
-            r = self.resp[win_lo:win_hi]
-            plt.plot(self.resp[win_lo:win_hi])
-            plt.axvspan(self.samp_freq, len(r) - self.samp_freq,
-                        color='red', alpha=0.3)
-            plt.show()
+        i, j = 0, 0
+        c = tgt.IntervalTier()
+        cyc = None
+        while i < len(self.cycles) and j < len(self.holds):
 
-        # Merge inhalation, exhalations and holds
+            if c:
+                cyc_start = max(c[-1].end_time, self.cycles[i].start_time)
+            else:
+                cyc_start = self.cycles[i].start_time
+
+            cyc = tgt.Interval(
+                cyc_start,
+                min(self.cycles[i].end_time, self.holds[j].start_time),
+                self.cycles[i].text)
+
+            if cyc.start_time < self.holds[j].start_time:
+                c.add_interval(cyc)
+            if self.cycles[i].end_time > self.holds[j].start_time:
+                c.add_interval(self.holds[j])
+                j += 1
+            if self.cycles[i].end_time <= c[-1].end_time:
+                i += 1
+
+        self.cycles = c
 
     @property
     def inhalations(self):
