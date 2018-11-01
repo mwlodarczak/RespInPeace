@@ -19,7 +19,6 @@
 
 from operator import itemgetter
 import csv
-import sys
 import math
 import warnings
 
@@ -27,7 +26,6 @@ from scipy.io import wavfile
 import numpy as np
 import pandas as pd
 import scipy.signal
-import matplotlib.pyplot as plt
 
 import tgt
 from peakdetect import peakdetect
@@ -42,7 +40,7 @@ __all__ = ['RIP']
 
 class RIP:
 
-    def __init__(self, resp_data, samp_freq, cycles=None):
+    def __init__(self, resp_data, samp_freq, segmentation=None):
 
         self.resp = resp_data
         self.samp_freq = samp_freq
@@ -57,8 +55,15 @@ class RIP:
         self.range_bot = None
         self.range_top = None
 
-        self.cycles = cycles
-        self.holds = None
+        # TODO: Check if segmentation is in the correct format.
+        if segmentation is not None:
+            inhalations = segmentation.get_annotations_with_text('in')
+            self._troughs = np.round(intr.start_time * self.samp_freq
+                                     for intr in inhalations).astype(np.int)
+            self._peaks = np.round(intr.start_time * self.samp_freq
+                                   for intr in inhalations).astype(np.int)
+
+        self._holds = None
 
     # == Alternative initializers ==
 
@@ -160,12 +165,6 @@ class RIP:
         self._peaks = np.array(peaks)[:, 0].astype('int')
         self._troughs = np.array(troughs)[:, 0].astype('int')
 
-        self.cycles = tgt.IntervalTier(name='cycles')
-        for inh, exh in zip(self.inhalations, self.exhalations):
-            self.cycles.add_intervals(
-                [tgt.Interval(inh[0], inh[1], 'in'),
-                 tgt.Interval(exh[0], exh[1], 'out')])
-
         if include_holds:
             # Pass kwargs to find_holds.
             self.find_holds(**kwargs)
@@ -175,8 +174,7 @@ class RIP:
         """Find respiratory holds within the respiratory interval
         delimited by start and end."""
 
-        intr_resp = self.resp[round(start * self.samp_freq):
-                              round(end * self.samp_freq) + 1]
+        intr_resp = self.resp[start:end]
         bin_vals, bin_edges = np.histogram(intr_resp, bins)
 
         # Normalise the histogram.
@@ -221,70 +219,76 @@ class RIP:
                 holds_merged.append(prev_hold)
                 prev_hold = h
         holds_merged.append(prev_hold)
-
         return holds_merged
 
-    def find_holds(self, min_hold_dur=0.15, min_hold_gap=0.15,
-                   peak_prominence=0.05, bins=100, merge=True):
+    def find_holds(self, min_hold_dur=0.25, min_hold_gap=0.15,
+                   peak_prominence=0.05, bins=100):
 
         # Identify inhalations and exhalation if not present.
         if self.cycles is None:
             self.find_cycles()
 
-        holds = []
-        for intr in self.cycles:
-            intr_holds = self._find_holds_within_interval(
-                intr.start_time, intr.end_time, peak_prominence, bins)
-            if intr_holds is not None:
-                holds += [(intr.start_time + i[0] / self.samp_freq,
-                           intr.start_time + i[1] / self.samp_freq)
-                          for i in intr_holds]
+        hold_cand = []
+        seg_samp = np.concatenate(
+            (np.stack([self._troughs[:-1], self._peaks], axis=1),
+             np.stack([self._peaks, self._troughs[1:]], axis=1)))
 
-        if not holds:
+        for lo, hi in seg_samp[seg_samp[:, 1].argsort()]:
+            intr_holds = self._find_holds_within_interval(
+                lo, hi, peak_prominence, bins)
+
+            if intr_holds is not None:
+                hold_cand += [(lo + h[0],  lo + h[1]) for h in intr_holds]
+
+        if not hold_cand:
             return
 
         # Merge holds which lie closer than min_hold_gap and
         # exclude holds shorter than min_hold_dur.
-        self.holds = []
+        holds = []
         prev_hold = None
 
-        for h in holds:
+        for h in hold_cand:
             if prev_hold is None:
                 prev_hold = h
-            elif h[0] - prev_hold[1] < min_hold_gap:
+            elif h[0] - prev_hold[1] < min_hold_gap * self.samp_freq:
                 prev_hold = (prev_hold[0], h[1])
             else:
-                if prev_hold[1] - prev_hold[0] >= min_hold_dur:
-                    self.holds.append(tgt.Interval(*prev_hold, 'hold'))
+                if prev_hold[1] - prev_hold[0] >= min_hold_dur * self.samp_freq:
+                    holds.append(prev_hold)
                 prev_hold = h
-        self.holds.append(tgt.Interval(*prev_hold, 'hold'))
+        holds.append(prev_hold)
+        self._holds = np.array(holds)
 
     def _merge_holds(self):
 
         i, j = 0, 0
-        c = tgt.IntervalTier()
-        cyc = None
+        cycles = tgt.IntervalTier()
+        c = None
         while i < len(self.cycles) and j < len(self.holds):
 
-            if c:
-                cyc_start = max(c[-1].end_time, self.cycles[i].start_time)
+            if cycles:
+                c_start = max(cycles[-1].end_time, self.cycles[i].start_time)
             else:
-                cyc_start = self.cycles[i].start_time
+                c_start = self.cycles[i].start_time
+            c_end = min(self.cycles[i].end_time, self.holds[j].start_time),
+            c = tgt.Interval(c_start, c_end, self.cycles[i].text)
 
-            cyc = tgt.Interval(
-                cyc_start,
-                min(self.cycles[i].end_time, self.holds[j].start_time),
-                self.cycles[i].text)
-
-            if cyc.start_time < self.holds[j].start_time:
-                c.add_interval(cyc)
+            if c.start_time < self.holds[j].start_time:
+                cycles.add_interval(c)
             if self.cycles[i].end_time > self.holds[j].start_time:
-                c.add_interval(self.holds[j])
+                cycles.add_interval(self.holds[j])
                 j += 1
-            if self.cycles[i].end_time <= c[-1].end_time:
+            if self.cycles[i].end_time <= cycles[-1].end_time:
                 i += 1
 
-        self.cycles = c
+        self.cycles = cycles
+
+    @property
+    def cycles(self):
+        """Start and end times (in seconds) of respiratory cycles"""
+        cycl_samp = np.stack([self._troughs[:-1], self._troughs[1:]], axis=1)
+        return cycl_samp / self.samp_freq
 
     @property
     def inhalations(self):
@@ -294,10 +298,26 @@ class RIP:
 
     @property
     def exhalations(self):
-        """Start and end tim
-es (in seconds) of exhalations"""
+        """Start and end times (in seconds) of exhalations"""
         exh_samp = np.stack([self._peaks, self._troughs[1:]], axis=1)
         return exh_samp / self.samp_freq
+
+    @property
+    def segments(self):
+        """Start and end times (in seconds) of respiratory intervals
+        (inhalations and exhalations) sorted by time in increasing
+        order.
+        """
+        seg_samp = np.concatenate(
+            (np.stack([self._troughs[:-1], self._peaks], axis=1),
+             np.stack([self._peaks, self._troughs[1:]], axis=1)))
+        return seg_samp[seg_samp[:, 1].argsort()[::-1]] / self.samp_freq
+
+    @property
+    def holds(self):
+
+        if self._holds is not None:
+            return self._holds / self.samp_freq
 
     def find_laughters(self):
         raise NotImplementedError
@@ -338,17 +358,6 @@ es (in seconds) of exhalations"""
 
         self.rel = rel
 
-    # == Parameter estimation ==
-
-    def slope(self):
-        raise NotImplementedError
-
-    def amplitude(self):
-        raise NotImplementedError
-
-    def speech_delay(self):
-        raise NotImplementedError
-
     # == Saving results to file ==
 
     def save_resp(self, filename, samp_freq, filetype='wav'):
@@ -366,7 +375,7 @@ es (in seconds) of exhalations"""
         else:
             raise ValueError('Unsupported filetype: {}.'.format(filetype))
 
-    def save_annotations(self, filename, tiers=['cycles'],
+    def save_annotations(self, filename, tiers=['cycles', 'holds'],
                          filetype='textgrid'):
         """Save annotations to file."""
 
@@ -382,8 +391,14 @@ es (in seconds) of exhalations"""
                 cycles.add_intervals(
                     [tgt.Interval(inh[0], inh[1], 'in'),
                      tgt.Interval(exh[0], exh[1], 'out')])
-
             tg.add_tier(cycles)
+
+        if 'holds' in tiers:
+
+            holds = tgt.IntervalTier(name='tiers')
+            for start, end in self.holds:
+                holds.add_interval(tgt.Interval(start, end, 'hold'))
+            tg.add_tier(holds)
 
         if len(tg.tiers):
             filetype = 'short' if filetype == 'textgrid' else filetype
