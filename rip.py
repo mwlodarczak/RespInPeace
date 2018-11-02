@@ -38,48 +38,6 @@ pd.set_option('compute.use_numexpr', True)
 __all__ = ['RIP']
 
 
-class TimeIndexer:
-    """An indexer to access samples by time stamps."""
-
-    def __init__(self, resp, samp_freq):
-
-        self.resp = resp
-        self.samp_freq = samp_freq
-
-    def __getitem__(self, key):
-        print(type(key))
-        if isinstance(key, int):
-            idx = self._round_timestamp(key, method='nearest')
-            return self.resp[idx]
-        elif isinstance(key, slice):
-            start = self._time_to_sample(key.start, method='ceil')
-            end = self._time_to_sample(key.stop, method='floor')
-            if key.step is not None:
-                step = self._time_to_sample(key.step)
-            else:
-                step = key.step
-            return self.resp[start:end:step]
-        elif isinstance(key, np.ndarray):
-            idx = self._time_to_sample(key, method='nearest')
-            return self.resp[idx]
-        else:
-            raise IndexError
-
-    def _time_to_sample(self, t, method='nearest'):
-        """Convert time stamp to sample index using the
-        specified rounding method. By default the nearest
-        sample is returned."""
-
-        if method == 'nearest':
-            return np.round(t * self.samp_freq).astype(np.int)
-        elif method == 'ceil':
-            return np.ceil(t * self.samp_freq).astype(np.int)
-        elif method == 'floor':
-            return np.floor(t * self.samp_freq).astype(np.int)
-        else:
-            raise ValueError('Unknown method: {}'.format(method))
-
-
 class RIP:
 
     def __init__(self, resp_data, samp_freq, cycles=None):
@@ -111,8 +69,13 @@ class RIP:
                 raise ValueError('Cycle annotation must start with an '
                                  'inhalation.')
             if cycles[-1].text != 'out':
-                raise ValueError('Cycle annotation must end with an '
-                                 'exhalation.')
+                raise ValueError(
+                    'Cycle annotation must end with an exhalation.')
+            gaps = [cycles[i + 1].start_time - cycles[i].end_time > 0
+                    for i in range(len(cycles) - 1)]
+            if any(gaps):
+                raise ValueError(
+                    'No gaps allowed in the respiratory segmentation.')
 
             inhalations = cycles.get_annotations_with_text('in')
             self._troughs = np.round(intr.start_time * self.samp_freq
@@ -461,6 +424,8 @@ class RIP:
             filetype = 'short' if filetype == 'textgrid' else filetype
             tgt.write_to_file(tg, filename, format=filetype)
 
+    # == Private methods ==
+
     @staticmethod
     def _merge_holds(cycles, holds):
         """Merge respiratory holds with the inhalation and exhalation
@@ -487,8 +452,6 @@ class RIP:
                 i += 1
 
         return cycles
-
-    # == Private methods ==
 
     @staticmethod
     def _find_islands(a, min_gap):
@@ -532,3 +495,45 @@ class RIP:
         mar_right = math.floor((l + win_len) / 2)
         win[mar_left: mar_right] = 1
         return scipy.signal.fftconvolve(self.resp, win, mode='same') / win_len
+
+
+class TimeIndexer:
+    """An indexer to access samples by time stamps."""
+
+    def __init__(self, resp, samp_freq):
+
+        self.resp = resp
+        self.samp_freq = samp_freq
+
+    def __getitem__(self, key):
+        print(type(key))
+        if isinstance(key, int):
+            idx = self._round_timestamp(key, method='nearest')
+            return self.resp[idx]
+        elif isinstance(key, slice):
+            start = self._time_to_sample(key.start, method='ceil')
+            end = self._time_to_sample(key.stop, method='floor')
+            if key.step is not None:
+                step = self._time_to_sample(key.step)
+            else:
+                step = key.step
+            return self.resp[start:end:step]
+        elif isinstance(key, np.ndarray):
+            idx = self._time_to_sample(key, method='nearest')
+            return self.resp[idx]
+        else:
+            raise IndexError
+
+    def _time_to_sample(self, t, method='nearest'):
+        """Convert time stamp to sample index using the
+        specified rounding method. By default the nearest
+        sample is returned."""
+
+        if method == 'nearest':
+            return np.round(t * self.samp_freq).astype(np.int)
+        elif method == 'ceil':
+            return np.ceil(t * self.samp_freq).astype(np.int)
+        elif method == 'floor':
+            return np.floor(t * self.samp_freq).astype(np.int)
+        else:
+            raise ValueError('Unknown method: {}'.format(method))
