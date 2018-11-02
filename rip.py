@@ -27,8 +27,8 @@ import numpy as np
 import pandas as pd
 import scipy.signal
 
-import tgt
 from peakdetect import peakdetect
+import tgt
 
 # Make sure Pandas uses the bottleneck and numexpr libraries
 # (in they are installed).
@@ -47,8 +47,9 @@ class TimeIndexer:
         self.samp_freq = samp_freq
 
     def __getitem__(self, key):
+        print(type(key))
         if isinstance(key, int):
-            idx = self._round_timestamp(key)
+            idx = self._round_timestamp(key, method='nearest')
             return self.resp[idx]
         elif isinstance(key, slice):
             start = self._time_to_sample(key.start, method='ceil')
@@ -58,6 +59,9 @@ class TimeIndexer:
             else:
                 step = key.step
             return self.resp[start:end:step]
+        elif isinstance(key, np.ndarray):
+            idx = self._time_to_sample(key, method='nearest')
+            return self.resp[idx]
         else:
             raise IndexError
 
@@ -67,18 +71,18 @@ class TimeIndexer:
         sample is returned."""
 
         if method == 'nearest':
-            return round(t * self.samp_freq)
+            return np.round(t * self.samp_freq).astype(np.int)
         elif method == 'ceil':
-            return math.ceil(t * self.samp_freq)
+            return np.ceil(t * self.samp_freq).astype(np.int)
         elif method == 'floor':
-            return math.floor(t * self.samp_freq)
+            return np.floor(t * self.samp_freq).astype(np.int)
         else:
             raise ValueError('Unknown method: {}'.format(method))
 
 
 class RIP:
 
-    def __init__(self, resp_data, samp_freq, segmentation=None):
+    def __init__(self, resp_data, samp_freq, cycles=None):
 
         self.resp = resp_data
         self.samp_freq = samp_freq
@@ -93,9 +97,24 @@ class RIP:
         self.range_bot = None
         self.range_top = None
 
-        # TODO: Check if segmentation is in the correct format.
-        if segmentation is not None:
-            inhalations = segmentation.get_annotations_with_text('in')
+        # Check if respiratory segmentation is in the correct format.
+        if cycles is not None:
+            if not isinstance(cycles, tgt.IntervalTier):
+                raise ValueError('Wrong speech segmentation format: {}'.format(
+                    cycles.__class__.__name__))
+            cycle_labs = set(i.text for i in cycles)
+            if cycle_labs != {'in', 'out'}:
+                extra_labs = cycle_labs - {'in', 'out'}
+                raise ValueError('Unrecognised respiratory labels: {}.'.format(
+                    ', '.join(extra_labs)))
+            if cycles[0].text != 'in':
+                raise ValueError('Cycle annotation must start with an '
+                                 'inhalation.')
+            if cycles[-1].text != 'out':
+                raise ValueError('Cycle annotation must end with an '
+                                 'exhalation.')
+
+            inhalations = cycles.get_annotations_with_text('in')
             self._troughs = np.round(intr.start_time * self.samp_freq
                                      for intr in inhalations).astype(np.int)
             self._peaks = np.round(intr.start_time * self.samp_freq
@@ -309,30 +328,6 @@ class RIP:
         holds.append(prev_hold)
         self._holds = np.array(holds)
 
-    def _merge_holds(self):
-
-        i, j = 0, 0
-        cycles = tgt.IntervalTier()
-        c = None
-        while i < len(self.cycles) and j < len(self.holds):
-
-            if cycles:
-                c_start = max(cycles[-1].end_time, self.cycles[i].start_time)
-            else:
-                c_start = self.cycles[i].start_time
-            c_end = min(self.cycles[i].end_time, self.holds[j].start_time),
-            c = tgt.Interval(c_start, c_end, self.cycles[i].text)
-
-            if c.start_time < self.holds[j].start_time:
-                cycles.add_interval(c)
-            if self.cycles[i].end_time > self.holds[j].start_time:
-                cycles.add_interval(self.holds[j])
-                j += 1
-            if self.cycles[i].end_time <= cycles[-1].end_time:
-                i += 1
-
-        self.cycles = cycles
-
     @property
     def cycles(self):
         """Start and end times (in seconds) of respiratory cycles"""
@@ -369,6 +364,17 @@ class RIP:
             return self._holds / self.samp_freq
 
     def find_laughters(self):
+        raise NotImplementedError
+
+    def _check_cycles(self):
+        # TODO: if the speech annotation is available, make sure
+        # no inhalation coincides with speech intervals.
+        raise NotImplementedError
+
+    def classify_cycles(self):
+        """Classify respiratory cycles (intervals from inhalation onsets to
+        exhalation offsets) as "speech", "silence" or "VSU".
+        """
         raise NotImplementedError
 
     def estimate_range(self, bot=5, top=95):
@@ -409,7 +415,7 @@ class RIP:
 
     # == Saving results to file ==
 
-    def save_resp(self, filename, samp_freq, filetype='wav'):
+    def save_resp(self, filename, filetype='wav'):
         """Save respiratory data to file."""
 
         if filetype == 'wav':
@@ -452,6 +458,32 @@ class RIP:
         if len(tg.tiers):
             filetype = 'short' if filetype == 'textgrid' else filetype
             tgt.write_to_file(tg, filename, format=filetype)
+
+    def _merge_holds(self):
+        """Merge respiratory holds with the inhalation and exhalation
+        boundaries."""
+
+        i, j = 0, 0
+        cycles = tgt.IntervalTier()
+        c = None
+        while i < len(self.cycles) and j < len(self.holds):
+
+            if cycles:
+                c_start = max(cycles[-1].end_time, self.cycles[i].start_time)
+            else:
+                c_start = self.cycles[i].start_time
+            c_end = min(self.cycles[i].end_time, self.holds[j].start_time),
+            c = tgt.Interval(c_start, c_end, self.cycles[i].text)
+
+            if c.start_time < self.holds[j].start_time:
+                cycles.add_interval(c)
+            if self.cycles[i].end_time > self.holds[j].start_time:
+                cycles.add_interval(self.holds[j])
+                j += 1
+            if self.cycles[i].end_time <= cycles[-1].end_time:
+                i += 1
+
+        self.cycles = cycles
 
     # == Private methods ==
 
