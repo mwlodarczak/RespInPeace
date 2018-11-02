@@ -48,40 +48,14 @@ class RIP:
         self.t = np.arange(len(self.resp)) / self.samp_freq
         self.dur = len(self.resp) / self.samp_freq
 
-        self._peaks = None
-        self._troughs = None
-
         self.rel = None
         self.range_bot = None
         self.range_top = None
 
-        # Check if respiratory segmentation is in the correct format.
         if cycles is not None:
-            if not isinstance(cycles, tgt.IntervalTier):
-                raise ValueError('Wrong speech segmentation format: {}'.format(
-                    cycles.__class__.__name__))
-            cycle_labs = set(i.text for i in cycles)
-            if cycle_labs != {'in', 'out'}:
-                extra_labs = cycle_labs - {'in', 'out'}
-                raise ValueError('Unrecognised respiratory labels: {}.'.format(
-                    ', '.join(extra_labs)))
-            if cycles[0].text != 'in':
-                raise ValueError('Cycle annotation must start with an '
-                                 'inhalation.')
-            if cycles[-1].text != 'out':
-                raise ValueError(
-                    'Cycle annotation must end with an exhalation.')
-            gaps = [cycles[i + 1].start_time - cycles[i].end_time > 0
-                    for i in range(len(cycles) - 1)]
-            if any(gaps):
-                raise ValueError(
-                    'No gaps allowed in the respiratory segmentation.')
-
-            inhalations = cycles.get_annotations_with_text('in')
-            self._troughs = np.round(intr.start_time * self.samp_freq
-                                     for intr in inhalations).astype(np.int)
-            self._peaks = np.round(intr.start_time * self.samp_freq
-                                   for intr in inhalations).astype(np.int)
+            self._peaks, self._troughs = self._read_cycles(cycles)
+        else:
+            self._peaks, self._troughs = None, None
 
         self._holds = None
 
@@ -496,6 +470,32 @@ class RIP:
         win[mar_left: mar_right] = 1
         return scipy.signal.fftconvolve(self.resp, win, mode='same') / win_len
 
+    def _read_cycles(self, cycles):
+        """Read an external cycles annotation and return boundary indices."""
+
+        # Check if respiratory segmentation is in the correct format.
+        if not isinstance(cycles, tgt.IntervalTier):
+            raise ValueError('Wrong speech segmentation format: {}'.format(
+                cycles.__class__.__name__))
+        cycle_labs = set(i.text for i in cycles)
+        if cycle_labs != {'in', 'out'}:
+            extra_labs = cycle_labs - {'in', 'out'}
+            raise ValueError('Unrecognised respiratory labels: {}.'.format(
+                    ', '.join(extra_labs)))
+        if cycles[0].text != 'in':
+            raise ValueError('Cycle annotation must start with an inhalation.')
+        if cycles[-1].text != 'out':
+            raise ValueError('Cycle annotation must end with an exhalation.')
+        gaps = [cycles[i + 1].start_time - cycles[i].end_time > 0
+                for i in range(len(cycles) - 1)]
+        if any(gaps):
+            raise ValueError('No gaps allowed in between cycles.')
+
+        bounds = np.round(i.start_time * self.samp_freq for i in cycles).astype(np.int)
+        troughs, peaks = bounds[::2], bounds[1::2]
+
+        return troughs, peaks
+
 
 class TimeIndexer:
     """An indexer to access samples by time stamps."""
@@ -506,8 +506,7 @@ class TimeIndexer:
         self.samp_freq = samp_freq
 
     def __getitem__(self, key):
-        print(type(key))
-        if isinstance(key, int):
+        if isinstance(key, int) or isinstance(key, np.ndarray):
             idx = self._round_timestamp(key, method='nearest')
             return self.resp[idx]
         elif isinstance(key, slice):
@@ -518,9 +517,6 @@ class TimeIndexer:
             else:
                 step = key.step
             return self.resp[start:end:step]
-        elif isinstance(key, np.ndarray):
-            idx = self._time_to_sample(key, method='nearest')
-            return self.resp[idx]
         else:
             raise IndexError
 
