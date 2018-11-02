@@ -431,7 +431,7 @@ class RIP:
             raise ValueError('Unsupported filetype: {}.'.format(filetype))
 
     def save_annotations(self, filename, tiers=['cycles', 'holds'],
-                         filetype='textgrid'):
+                         filetype='textgrid', merge_holds=False):
         """Save annotations to file."""
 
         if filetype not in ['textgrid', 'eaf', 'table']:
@@ -439,51 +439,54 @@ class RIP:
 
         tg = tgt.TextGrid()
 
-        if 'cycles' in tiers:
+        if 'holds' in tiers or merge_holds:
+            holds = tgt.IntervalTier(name='tiers')
+            for start, end in self.holds:
+                holds.add_interval(tgt.Interval(start, end, 'hold'))
+            if not merge_holds:
+                tg.add_tier(holds)
 
+        if 'cycles' in tiers:
             cycles = tgt.IntervalTier(name='cycles')
             for inh, exh in zip(self.inhalations, self.exhalations):
                 cycles.add_intervals(
                     [tgt.Interval(inh[0], inh[1], 'in'),
                      tgt.Interval(exh[0], exh[1], 'out')])
-            tg.add_tier(cycles)
-
-        if 'holds' in tiers:
-
-            holds = tgt.IntervalTier(name='tiers')
-            for start, end in self.holds:
-                holds.add_interval(tgt.Interval(start, end, 'hold'))
-            tg.add_tier(holds)
+            if merge_holds:
+                tg.add_tier(self.merge_holds(cycles, holds))
+            else:
+                tg.add_tier(cycles)
 
         if len(tg.tiers):
             filetype = 'short' if filetype == 'textgrid' else filetype
             tgt.write_to_file(tg, filename, format=filetype)
 
-    def _merge_holds(self):
+    @staticmethod
+    def _merge_holds(cycles, holds):
         """Merge respiratory holds with the inhalation and exhalation
         boundaries."""
 
         i, j = 0, 0
         cycles = tgt.IntervalTier()
-        c = None
-        while i < len(self.cycles) and j < len(self.holds):
+        cur_intr = None
+        while i < len(cycles) and j < len(holds):
 
             if cycles:
-                c_start = max(cycles[-1].end_time, self.cycles[i].start_time)
+                c_start = max(cycles[-1].end_time, cycles[i].start_time)
             else:
-                c_start = self.cycles[i].start_time
-            c_end = min(self.cycles[i].end_time, self.holds[j].start_time),
-            c = tgt.Interval(c_start, c_end, self.cycles[i].text)
+                c_start = cycles[i].start_time
+            c_end = min(cycles[i].end_time, holds[j].start_time),
+            cur_intr = tgt.Interval(c_start, c_end, cycles[i].text)
 
-            if c.start_time < self.holds[j].start_time:
-                cycles.add_interval(c)
-            if self.cycles[i].end_time > self.holds[j].start_time:
-                cycles.add_interval(self.holds[j])
+            if cur_intr.start_time < holds[j].start_time:
+                cycles.add_interval(cur_intr)
+            if cycles[i].end_time > holds[j].start_time:
+                cycles.add_interval(holds[j])
                 j += 1
-            if self.cycles[i].end_time <= cycles[-1].end_time:
+            if cycles[i].end_time <= cycles[-1].end_time:
                 i += 1
 
-        self.cycles = cycles
+        return cycles
 
     # == Private methods ==
 
