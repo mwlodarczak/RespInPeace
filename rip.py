@@ -147,6 +147,17 @@ class RIP:
         """Return an indexer to access samples by time stamp values."""
         return TimeIndexer(self.resp, self.samp_freq)
 
+    def __iter__(self):
+        return iter(self.resp)
+
+    def __len__(self):
+        """Return the number of samples."""
+        return len(self.resp)
+
+    def __repr__(self):
+        return '{}(samp_freq={}, nsamples={})'.format(
+            self.__class__.__name__, self.samp_freq, len(self))
+
     def resample(self, resamp_freq):
 
         # Number of samples in the resampled signal
