@@ -38,6 +38,44 @@ pd.set_option('compute.use_numexpr', True)
 __all__ = ['RIP']
 
 
+class TimeIndexer:
+    """An indexer to access samples by time stamps."""
+
+    def __init__(self, resp, samp_freq):
+
+        self.resp = resp
+        self.samp_freq = samp_freq
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            idx = self._round_timestamp(key)
+            return self.resp[idx]
+        elif isinstance(key, slice):
+            start = self._time_to_sample(key.start, method='ceil')
+            end = self._time_to_sample(key.stop, method='floor')
+            if key.step is not None:
+                step = self._time_to_sample(key.step)
+            else:
+                step = key.step
+            return self.resp[start:end:step]
+        else:
+            raise IndexError
+
+    def _time_to_sample(self, t, method='nearest'):
+        """Convert time stamp to sample index using the
+        specified rounding method. By default the nearest
+        sample is returned."""
+
+        if method == 'nearest':
+            return round(t * self.samp_freq)
+        elif method == 'ceil':
+            return math.ceil(t * self.samp_freq)
+        elif method == 'floor':
+            return math.floor(t * self.samp_freq)
+        else:
+            raise ValueError('Unknown method: {}'.format(method))
+
+
 class RIP:
 
     def __init__(self, resp_data, samp_freq, segmentation=None):
@@ -101,13 +139,13 @@ class RIP:
             raise ValueError('Input data has {} columns'
                              'expected 2.'.format(tbl.shape[1]))
 
-    def idt(self, t, interpolation='nearest'):
-        '''Index respiratory signal by time. The time stamp is rounded to the
-        nearest sample.
-        '''
+    def __getitem__(self, key):
+        return self.resp[key]
 
-        if interpolation == 'nearest':
-            return self.resp[np.round(np.array(t) * self.samp_freq).astype(int)]
+    @property
+    def idt(self):
+        """Return an indexer to access samples by time stamp values."""
+        return TimeIndexer(self.resp, self.samp_freq)
 
     def resample(self, resamp_freq):
 
