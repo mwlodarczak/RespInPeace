@@ -35,8 +35,7 @@ import tgt
 pd.set_option('compute.use_bottleneck', True)
 pd.set_option('compute.use_numexpr', True)
 
-__all__ = ['RIP']
-
+__all__ = ['RIP']    
 
 class RIP:
 
@@ -350,7 +349,9 @@ class RIP:
             else:
                 rel[i] = np.nan
 
-        self.rel = rel
+        # REL values as stored as a Pandas Series and indexed by
+        # the onset of the respiratory cycle.
+        self.rel = pd.Series(rel, index=self._troughs[:-1])
 
     # == Feature extraction ==
 
@@ -377,9 +378,9 @@ class RIP:
     def extract_level(self, t, norm=True):
 
         if norm:
-            return (self.idt[t] - self.rel.idt[t]) / self.range
+            return (self.idt[t] - self.rel.loc[t]) / self.range
         else:
-            return (self.idt[t] - self.rel.idt[t])
+            return (self.idt[t] - self.rel.loc[t])
 
     # == Saving results to file ==
 
