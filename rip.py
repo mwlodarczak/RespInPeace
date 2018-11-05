@@ -49,6 +49,7 @@ class RIP:
         self.dur = len(self.resp) / self.samp_freq
 
         self.rel = None
+        self.range = None
         self.range_bot = None
         self.range_top = None
 
@@ -324,6 +325,7 @@ class RIP:
 
         self.range_bot = np.percentile(self.resp[self._troughs], bot)
         self.range_top = np.percentile(self.resp[self._peaks], top)
+        self.range = self.range_top - self.range_bot
 
     def estimate_rel(self, lookbehind, min_len=1):
         """Estimate REL (resting expiratory level).
@@ -349,6 +351,35 @@ class RIP:
                 rel[i] = np.nan
 
         self.rel = rel
+
+    # == Feature extraction ==
+
+    def extract_slope(self, start, end, norm=True):
+
+        resp = self.idt[start:end]
+
+        if norm:
+            amp = (resp[-1] - resp[0]) / self.range
+        else:
+            amp = resp[-1] - resp[0]
+
+        return amp / (end - start)
+
+    def extract_amplitude(self, start, end, norm=True):
+
+        resp = self.idt[start:end]
+
+        if norm:
+            return (resp[-1] - resp[0]) / self.range
+        else:
+            return resp[-1] - resp[0]
+
+    def extract_level(self, t, norm=True):
+
+        if norm:
+            return (self.idt[t] - self.rel.idt[t]) / self.range
+        else:
+            return (self.idt[t] - self.rel.idt[t])
 
     # == Saving results to file ==
 
