@@ -53,7 +53,7 @@ class RIP:
         self.range_top = None
 
         if cycles is not None:
-            self._peaks, self._troughs = self._read_cycles(cycles)
+            self._troughs, self._peaks = self._read_cycles(cycles)
         else:
             self._peaks, self._troughs = None, None
 
