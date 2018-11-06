@@ -23,7 +23,7 @@ setup(
     name='rip',
     description='RespInPeace - Process and analyse breathing belt (RIP) data.',
     version='0.9',
-    modules=['rip'],
+    py_modules=['rip', 'peakdetect'],
     maintainer='Marcin Włodarczak',
     maintainer_email='wlodarczak@ling.su.se',
     license='GNU General Public License 3',

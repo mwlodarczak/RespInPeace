@@ -35,7 +35,8 @@ import tgt
 pd.set_option('compute.use_bottleneck', True)
 pd.set_option('compute.use_numexpr', True)
 
-__all__ = ['RIP']    
+__all__ = ['RIP']
+
 
 class RIP:
 
@@ -292,7 +293,7 @@ class RIP:
         seg_samp = np.concatenate(
             (np.stack([self._troughs[:-1], self._peaks], axis=1),
              np.stack([self._peaks, self._troughs[1:]], axis=1)))
-        return seg_samp[seg_samp[:, 1].argsort()[::-1]] / self.samp_freq
+        return seg_samp[seg_samp[:, 1].argsort()] / self.samp_freq
 
     @property
     def holds(self):
@@ -349,22 +350,19 @@ class RIP:
             else:
                 rel[i] = np.nan
 
-        # REL values as stored as a Pandas Series and indexed by
-        # the onset of the respiratory cycle.
-        self.rel = pd.Series(rel, index=self._troughs[:-1])
+        self.rel = rel
+
+    def rel_at_time(self, t):
+
+        samp_ind = round(t * self.samp_freq)
+        cycle_offset = self._troughs[:-1] - samp_ind
+        inh_ind = len(cycle_offset[cycle_offset <= 0]) - 1
+        if inh_ind >= 0:
+            return self.rel[inh_ind]
+        else:
+            return None
 
     # == Feature extraction ==
-
-    def extract_slope(self, start, end, norm=True):
-
-        resp = self.idt[start:end]
-
-        if norm:
-            amp = (resp[-1] - resp[0]) / self.range
-        else:
-            amp = resp[-1] - resp[0]
-
-        return amp / (end - start)
 
     def extract_amplitude(self, start, end, norm=True):
 
@@ -375,12 +373,17 @@ class RIP:
         else:
             return resp[-1] - resp[0]
 
+    def extract_slope(self, start, end, norm=True):
+        
+        dur = end - start
+        return self.extract_amplitude(start, end, norm) / dur
+
     def extract_level(self, t, norm=True):
 
         if norm:
-            return (self.idt[t] - self.rel.loc[t]) / self.range
+            return (self.idt[t] - self.rel_at_time(t)) / self.range
         else:
-            return (self.idt[t] - self.rel.loc[t])
+            return (self.idt[t] - self.rel_at_time(t))
 
     # == Saving results to file ==
 
@@ -409,7 +412,7 @@ class RIP:
         tg = tgt.TextGrid()
 
         if 'holds' in tiers or merge_holds:
-            holds = tgt.IntervalTier(name='tiers')
+            holds = tgt.IntervalTier(name='holds')
             for start, end in self.holds:
                 holds.add_interval(tgt.Interval(start, end, 'hold'))
             if not merge_holds:
@@ -538,8 +541,9 @@ class TimeIndexer:
         self.samp_freq = samp_freq
 
     def __getitem__(self, key):
-        if isinstance(key, int) or isinstance(key, np.ndarray):
-            idx = self._round_timestamp(key, method='nearest')
+        if (isinstance(key, int) or isinstance(key, float)
+            or isinstance(key, np.ndarray)):
+            idx = self._time_to_sample(key, method='nearest')
             return self.resp[idx]
         elif isinstance(key, slice):
             start = self._time_to_sample(key.start, method='ceil')
