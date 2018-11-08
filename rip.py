@@ -40,7 +40,7 @@ __all__ = ['RIP']
 
 class RIP:
 
-    def __init__(self, resp_data, samp_freq, cycles=None):
+    def __init__(self, resp_data, samp_freq, cycles=None, speech=None):
 
         self.resp = resp_data
         self.samp_freq = samp_freq
@@ -58,18 +58,27 @@ class RIP:
         else:
             self._peaks, self._troughs = None, None
 
+        if speech is not None and not isinstance(speech, tgt.IntervalTier):
+            raise ValueError(
+                'Wrong format of speech segmentation: {}.'.format(
+                    type(speech).__name__))
+        else:
+            self.speech = None
+            
+
         self._holds = None
 
     # == Alternative initializers ==
 
     @classmethod
-    def from_wav(cls, fname, cycles=None):
+    def from_wav(cls, fname, cycles=None, speech=None):
         """Read respiratory data from a WAV file."""
         samp_freq, resp = wavfile.read(fname)
         return cls(resp, samp_freq, cycles)
 
     @classmethod
-    def from_csv(cls, fname, samp_freq=None, delimiter=',', cycles=None):
+    def from_csv(cls, fname, samp_freq=None, delimiter=',',
+                 cycles=None, speech=None):
         """Read respiratory data from a CSV file.
 
         If `samp_freq` is not specified, the CSV file should have two
@@ -113,7 +122,7 @@ class RIP:
 
     def __repr__(self):
         return '{}(samp_freq={}, nsamples={})'.format(
-            self.__class__.__name__, self.samp_freq, len(self))
+            type(self).__name__, self.samp_freq, len(self))
 
     def resample(self, resamp_freq):
 
@@ -511,7 +520,7 @@ class RIP:
         # Check if respiratory segmentation is in the correct format.
         if not isinstance(cycles, tgt.IntervalTier):
             raise ValueError('Wrong speech segmentation format: {}'.format(
-                cycles.__class__.__name__))
+                type(cycles).__name__))
         cycle_labs = set(i.text for i in cycles)
         if cycle_labs != {'in', 'out'}:
             extra_labs = cycle_labs - {'in', 'out'}
