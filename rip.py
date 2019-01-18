@@ -71,10 +71,10 @@ class RIP:
     # == Alternative initializers ==
 
     @classmethod
-    def from_wav(cls, fname, cycles=None, speech=None):
+    def from_wav(cls, fname, channel=-1, cycles=None, speech=None):
         """Read respiratory data from a WAV file."""
         samp_freq, resp = wavfile.read(fname)
-        return cls(resp, samp_freq, cycles)
+        return cls(resp[channel,:], samp_freq, cycles, speech)
 
     @classmethod
     def from_csv(cls, fname, samp_freq=None, delimiter=',',
