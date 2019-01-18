@@ -74,7 +74,7 @@ class RIP:
     def from_wav(cls, fname, channel=-1, cycles=None, speech=None):
         """Read respiratory data from a WAV file."""
         samp_freq, resp = wavfile.read(fname)
-        return cls(resp[channel,:], samp_freq, cycles, speech)
+        return cls(resp[:, channel], samp_freq, cycles, speech)
 
     @classmethod
     def from_csv(cls, fname, samp_freq=None, delimiter=',',
@@ -546,7 +546,7 @@ class RIP:
         if any(gaps):
             raise ValueError('No gaps allowed in between cycles.')
 
-        bounds = np.round(i.start_time * self.samp_freq for i in cycles).astype(np.int)
+        bounds = np.round([i.start_time * self.samp_freq for i in cycles]).astype(np.int)
         troughs, peaks = bounds[::2], bounds[1::2]
 
         return troughs, peaks
