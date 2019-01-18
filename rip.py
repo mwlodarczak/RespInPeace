@@ -302,13 +302,24 @@ class RIP:
         seg_samp = np.concatenate(
             (np.stack([self._troughs[:-1], self._peaks], axis=1),
              np.stack([self._peaks, self._troughs[1:]], axis=1)))
-        return seg_samp[seg_samp[:, 1].argsort()] / self.samp_freq
+        seg_samp_sorted = seg_samp[seg_samp[:, 1].argsort()] / self.samp_freq
+        seg_tier = tgt.IntervalTier(name='resp')
+
+        for i, (lo, hi) in enumerate(seg_samp_sorted):
+            label = 'inhalation' if i % 2 == 0 else 'exhalation'
+            seg_tier.add_interval(tgt.Interval(lo, hi, label))
+        return seg_tier
 
     @property
     def holds(self):
 
-        if self._holds is not None:
-            return self._holds / self.samp_freq
+        if self._holds is None:
+            return
+
+        holds_tier = tgt.IntervalTier(name='holds')
+        for lo, hi in  self._holds / self.samp_freq:
+            holds_tier.add_interval(tgt.Interval(lo, hi, 'hold'))
+        return holds_tier
 
     def find_laughters(self):
         raise NotImplementedError
@@ -421,11 +432,11 @@ class RIP:
         tg = tgt.TextGrid()
 
         if 'holds' in tiers or merge_holds:
-            holds = tgt.IntervalTier(name='holds')
-            for start, end in self.holds:
-                holds.add_interval(tgt.Interval(start, end, 'hold'))
+            # holds = tgt.IntervalTier(name='holds')
+            # for start, end in self.holds:
+            #     holds.add_interval(tgt.Interval(start, end, 'hold'))
             if not merge_holds:
-                tg.add_tier(holds)
+                tg.add_tier(self.holds)
 
         if 'cycles' in tiers:
             cycles = tgt.IntervalTier(name='cycles')
