@@ -325,13 +325,12 @@ class RIP:
 
     @property
     def troughs(self):
-        inhalations = self.segments.get_annotations_with_matching_text('in')
-        return np.array([i.start_time for i in inhalations])
+        return np.array([i.start_time for i in self.segments if i.text == 'in']
+                        + [self.segments[-1].end_time])
 
     @property
     def peaks(self):
-        exhalations = self.segments.get_annotations_with_matching_text('out')
-        return np.array([i.start_time for i in exhalations])
+        return np.array([i.start_time for i in self.segments if i.text == 'out'])
 
     # @property
     # def segments(self):
@@ -397,16 +396,16 @@ class RIP:
         """
 
         lookbehind_samp = lookbehind * self.samp_freq
-        rel = np.zeros(len(self._troughs) - 1)
+        rel = np.zeros(len(self.troughs) - 1)
 
-        for i, trough in enumerate(self._troughs[:-1]):
+        for i, trough in enumerate(self.troughs[:-1]):
 
-            prev_troughs = self._troughs[np.logical_and(
-                self._troughs < trough,
-                self._troughs > trough - lookbehind_samp)]
+            prev_troughs = self.troughs[np.logical_and(
+                self.troughs < trough,
+                self.troughs > trough - lookbehind_samp)]
 
             if len(prev_troughs):
-                rel[i] = np.median(self.resp[prev_troughs])
+                rel[i] = np.median(self.idt[prev_troughs])
             else:
                 rel[i] = np.nan
 
@@ -486,15 +485,11 @@ class RIP:
                 tg.add_tier(self.holds)
 
         if 'cycles' in tiers:
-            cycles = tgt.IntervalTier(name='cycles')
-            for inh, exh in zip(self.inhalations, self.exhalations):
-                cycles.add_intervals(
-                    [tgt.Interval(inh[0], inh[1], 'in'),
-                     tgt.Interval(exh[0], exh[1], 'out')])
             if merge_holds:
-                tg.add_tier(self.merge_holds(cycles, holds))
+                segments_merged= tgt.IntervalTier(name='cycles')
+                tg.add_tier(self.merge_holds(self.segments, self.holds))
             else:
-                tg.add_tier(cycles)
+                tg.add_tier(self.segments)
 
         if len(tg.tiers):
             filetype = 'short' if filetype == 'textgrid' else filetype
