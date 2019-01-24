@@ -211,7 +211,7 @@ def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
             #Maxima peak candidate found
             #look ahead in signal to ensure that this is a peak and not jitter
             if y_axis[index:index+lookahead].max() < mx:
-                max_peaks.append([mxpos, mx])
+                max_peaks.append(mxpos)
                 dump.append(True)
                 #set algorithm to only find minima now
                 mx = np.Inf
@@ -229,7 +229,7 @@ def peakdetect(y_axis, x_axis = None, lookahead = 200, delta=0):
             #Minima peak candidate found 
             #look ahead in signal to ensure that this is a peak and not jitter
             if y_axis[index:index+lookahead].min() > mn:
-                min_peaks.append([mnpos, mn])
+                min_peaks.append(mnpos)
                 dump.append(False)
                 #set algorithm to only find maxima now
                 mn = -np.Inf
