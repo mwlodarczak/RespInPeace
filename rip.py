@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # RespInPeace -- Process and analyse breathing belt (RIP) data.
-# Copyright (C) 2018 Marcin Włodarczak
+# Copyright (C) 2018-2019 Marcin Włodarczak
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -45,6 +45,7 @@ class RIP:
         self.resp = resp_data
         self.samp_freq = samp_freq
 
+        # TODO: Do we actually need self.t? They can be always computed on the fly.
         self.t = np.arange(len(self.resp)) / self.samp_freq
         self.dur = len(self.resp) / self.samp_freq
 
@@ -53,10 +54,12 @@ class RIP:
         self.range_bot = None
         self.range_top = None
 
-        if cycles is not None:
-            self._troughs, self._peaks = self._read_cycles(cycles)
-        else:
-            self._peaks, self._troughs = None, None
+        # if cycles is not None:
+        #     self._troughs, self._peaks = self._read_cycles(cycles)
+        # else:
+        #     self._peaks, self._troughs = None, None
+
+        self.segments = cycles
 
         if speech is not None and not isinstance(speech, tgt.IntervalTier):
             raise ValueError(
@@ -74,7 +77,10 @@ class RIP:
     def from_wav(cls, fname, channel=-1, cycles=None, speech=None):
         """Read respiratory data from a WAV file."""
         samp_freq, resp = wavfile.read(fname)
-        return cls(resp[:, channel], samp_freq, cycles, speech)
+        if resp.ndim == 1:
+            return cls(resp, samp_freq, cycles, speech)
+        else:
+            return cls(resp[:, channel], samp_freq, cycles, speech)
 
     @classmethod
     def from_csv(cls, fname, samp_freq=None, delimiter=',',
@@ -169,16 +175,31 @@ class RIP:
                                     lookahead=lookahead)
 
         # Make sure we start with an inhalation and end with an exhalation.
-        if peaks[0][0] < troughs[0][0]:
+        if peaks[0] < troughs[0]:
             peaks = peaks[1:]
-        if peaks[-1][0] > troughs[-1][0]:
+        if peaks[-1] > troughs[-1]:
             peaks = peaks[:-1]
 
         assert len(peaks) == len(troughs) - 1, \
             'Expected {} peaks, got {}'.format(len(troughs) - 1, len(peaks))
 
-        self._peaks = np.array(peaks)[:, 0].astype('int')
-        self._troughs = np.array(troughs)[:, 0].astype('int')
+        # self._peaks = np.array(peaks)[:, 0].astype('int')
+        # self._troughs = np.array(troughs)[:, 0].astype('int')
+
+        # Store the results in an IntervalTier.
+        inhalations = zip(troughs[:-1], peaks)
+        exhalations = zip(peaks, troughs[1:])
+
+        segments = tgt.IntervalTier(name='resp')
+        for inh, exh in zip(inhalations, exhalations):
+            inh_onset = inh[0] / self.samp_freq
+            inh_offset = inh[1] / self.samp_freq
+            exh_offset = exh[1] / self.samp_freq
+
+            segments.add_interval(tgt.Interval(inh_onset, inh_offset, 'in'))
+            segments.add_interval(tgt.Interval(inh_offset, exh_offset, 'out'))
+
+        self.segments = segments
 
         if include_holds:
             # Pass kwargs to find_holds.
@@ -240,15 +261,19 @@ class RIP:
                    peak_prominence=0.05, bins=100):
 
         # Identify inhalations and exhalation if not present.
-        if self.cycles is None:
+        if self.segments is None:
             self.find_cycles()
 
         hold_cand = []
-        seg_samp = np.concatenate(
-            (np.stack([self._troughs[:-1], self._peaks], axis=1),
-             np.stack([self._peaks, self._troughs[1:]], axis=1)))
+        # seg_samp = np.concatenate(
+        #     (np.stack([self._troughs[:-1], self._peaks], axis=1),
+        #      np.stack([self._peaks, self._troughs[1:]], axis=1)))
 
-        for lo, hi in seg_samp[seg_samp[:, 1].argsort()]:
+        for intr in self.segments:
+
+            lo = round(intr.start_time * self.samp_freq)
+            hi = round(intr.end_time * self.samp_freq)
+
             intr_holds = self._find_holds_within_interval(
                 lo, hi, peak_prominence, bins)
 
@@ -275,40 +300,55 @@ class RIP:
         holds.append(prev_hold)
         self._holds = np.array(holds)
 
-    @property
-    def cycles(self):
-        """Start and end times (in seconds) of respiratory cycles"""
-        cycl_samp = np.stack([self._troughs[:-1], self._troughs[1:]], axis=1)
-        return cycl_samp / self.samp_freq
+    # @property
+    # def cycles(self):
+    #     """Start and end times (in seconds) of respiratory cycles"""
+    #     cycl_samp = np.stack([self._troughs[:-1], self._troughs[1:]], axis=1)
+    #     return cycl_samp / self.samp_freq
 
     @property
     def inhalations(self):
         """Start and end times (in seconds) of inhalations."""
-        inh_samp = np.stack([self._troughs[:-1], self._peaks], axis=1)
-        return inh_samp / self.samp_freq
+
+        return self.segments.get_annotations_with_matching_text('in')
+        # inh_samp = np.stack([self._troughs[:-1], self._peaks], axis=1)
+        # return inh_samp / self.samp_freq
 
     @property
     def exhalations(self):
         """Start and end times (in seconds) of exhalations"""
-        exh_samp = np.stack([self._peaks, self._troughs[1:]], axis=1)
-        return exh_samp / self.samp_freq
+
+        return self.segments.get_annotations_with_matching_text('out')
+
+        # exh_samp = np.stack([self._peaks, self._troughs[1:]], axis=1)
+        # return exh_samp / self.samp_freq
 
     @property
-    def segments(self):
-        """Start and end times (in seconds) of respiratory intervals
-        (inhalations and exhalations) sorted by time in increasing
-        order.
-        """
-        seg_samp = np.concatenate(
-            (np.stack([self._troughs[:-1], self._peaks], axis=1),
-             np.stack([self._peaks, self._troughs[1:]], axis=1)))
-        seg_samp_sorted = seg_samp[seg_samp[:, 1].argsort()] / self.samp_freq
-        seg_tier = tgt.IntervalTier(name='resp')
+    def troughs(self):
+        inhalations = self.segments.get_annotations_with_matching_text('in')
+        return np.array([i.start_time for i in inhalations])
 
-        for i, (lo, hi) in enumerate(seg_samp_sorted):
-            label = 'inhalation' if i % 2 == 0 else 'exhalation'
-            seg_tier.add_interval(tgt.Interval(lo, hi, label))
-        return seg_tier
+    @property
+    def peaks(self):
+        exhalations = self.segments.get_annotations_with_matching_text('out')
+        return np.array([i.start_time for i in exhalations])
+
+    # @property
+    # def segments(self):
+    #     """Start and end times (in seconds) of respiratory intervals
+    #     (inhalations and exhalations) sorted by time in increasing
+    #     order.
+    #     """
+    #     seg_samp = np.concatenate(
+    #         (np.stack([self._troughs[:-1], self._peaks], axis=1),
+    #          np.stack([self._peaks, self._troughs[1:]], axis=1)))
+    #     seg_samp_sorted = seg_samp[seg_samp[:, 1].argsort()] / self.samp_freq
+    #     seg_tier = tgt.IntervalTier(name='resp')
+
+    #     for i, (lo, hi) in enumerate(seg_samp_sorted):
+    #         label = 'inhalation' if i % 2 == 0 else 'exhalation'
+    #         seg_tier.add_interval(tgt.Interval(lo, hi, label))
+    #     return seg_tier
 
     @property
     def holds(self):
@@ -343,8 +383,8 @@ class RIP:
         `bot` and `top` (5th and 95th percentile by default).
         """
 
-        self.range_bot = np.percentile(self.resp[self._troughs], bot)
-        self.range_top = np.percentile(self.resp[self._peaks], top)
+        self.range_bot = np.percentile(self.idt[self.troughs], bot)
+        self.range_top = np.percentile(self.idt[self.peaks], top)
         self.range = self.range_top - self.range_bot
 
     def estimate_rel(self, lookbehind, min_len=1):
@@ -386,15 +426,13 @@ class RIP:
 
     def extract_amplitude(self, start, end, norm=True):
 
-        resp = self.idt[start:end]
-
         if norm:
-            return (resp[-1] - resp[0]) / self.range
+            return (self.idt[end] - self.idt[start]) / self.range
         else:
-            return resp[-1] - resp[0]
+            return self.idt[end] - self.idt[end]
 
     def extract_slope(self, start, end, norm=True):
-        
+
         dur = end - start
         return self.extract_amplitude(start, end, norm) / dur
 
@@ -403,7 +441,16 @@ class RIP:
         if norm:
             return (self.idt[t] - self.rel_at_time(t)) / self.range
         else:
-            return (self.idt[t] - self.rel_at_time(t))
+            return (self.idt[t] / self.range)
+
+    def extract_features(self, start, end, norm):
+        """Extract all features for the given interval."""
+
+        features = {'amplitude': self.extract_amplitude(start, end, norm),
+                    'slope': self.extract_slope(start, end, norm),
+                    'onset_level': self.extract_level(start, norm),
+                    'offset_level': self.extract_level(end, norm)}
+        return features
 
     # == Saving results to file ==
 
@@ -525,31 +572,31 @@ class RIP:
         win[mar_left: mar_right] = 1
         return scipy.signal.fftconvolve(self.resp, win, mode='same') / win_len
 
-    def _read_cycles(self, cycles):
-        """Read an external cycles annotation and return boundary indices."""
+    # def _read_cycles(self, cycles):
+    #     """Read an external cycles annotation and return boundary indices."""
 
-        # Check if respiratory segmentation is in the correct format.
-        if not isinstance(cycles, tgt.IntervalTier):
-            raise ValueError('Wrong speech segmentation format: {}'.format(
-                type(cycles).__name__))
-        cycle_labs = set(i.text for i in cycles)
-        if cycle_labs != {'in', 'out'}:
-            extra_labs = cycle_labs - {'in', 'out'}
-            raise ValueError('Unrecognised respiratory labels: {}.'.format(
-                    ', '.join(extra_labs)))
-        if cycles[0].text != 'in':
-            raise ValueError('Cycle annotation must start with an inhalation.')
-        if cycles[-1].text != 'out':
-            raise ValueError('Cycle annotation must end with an exhalation.')
-        gaps = [cycles[i + 1].start_time - cycles[i].end_time > 0
-                for i in range(len(cycles) - 1)]
-        if any(gaps):
-            raise ValueError('No gaps allowed in between cycles.')
+    #     # Check if respiratory segmentation is in the correct format.
+    #     if not isinstance(cycles, tgt.IntervalTier):
+    #         raise ValueError('Wrong speech segmentation format: {}'.format(
+    #             type(cycles).__name__))
+    #     cycle_labs = set(i.text for i in cycles)
+    #     if cycle_labs != {'in', 'out'}:
+    #         extra_labs = cycle_labs - {'in', 'out'}
+    #         raise ValueError('Unrecognised respiratory labels: {}.'.format(
+    #                 ', '.join(extra_labs)))
+    #     if cycles[0].text != 'in':
+    #         raise ValueError('Cycle annotation must start with an inhalation.')
+    #     if cycles[-1].text != 'out':
+    #         raise ValueError('Cycle annotation must end with an exhalation.')
+    #     gaps = [cycles[i + 1].start_time - cycles[i].end_time > 0
+    #             for i in range(len(cycles) - 1)]
+    #     if any(gaps):
+    #         raise ValueError('No gaps allowed in between cycles.')
 
-        bounds = np.round([i.start_time * self.samp_freq for i in cycles]).astype(np.int)
-        troughs, peaks = bounds[::2], bounds[1::2]
+    #     bounds = np.round([i.start_time * self.samp_freq for i in cycles]).astype(np.int)
+    #     troughs, peaks = bounds[::2], bounds[1::2]
 
-        return troughs, peaks
+    #     return troughs, peaks
 
 
 class TimeIndexer:
