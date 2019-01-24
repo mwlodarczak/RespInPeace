@@ -413,8 +413,7 @@ class RIP:
 
     def rel_at_time(self, t):
 
-        samp_ind = round(t * self.samp_freq)
-        cycle_offset = self._troughs[:-1] - samp_ind
+        cycle_offset = self.troughs[:-1] - t
         inh_ind = len(cycle_offset[cycle_offset <= 0]) - 1
         if inh_ind >= 0:
             return self.rel[inh_ind]
