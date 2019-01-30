@@ -130,14 +130,6 @@ class RIP:
         return '{}(samp_freq={}, nsamples={})'.format(
             type(self).__name__, self.samp_freq, len(self))
 
-    def resample(self, resamp_freq):
-
-        # Number of samples in the resampled signal
-        resamp_num = math.floor(self.dur * resamp_freq)
-        self.resp, self.t = scipy.signal.resample(
-            self.resp, num=resamp_num, t=self.t)
-        self.samp_freq = resamp_freq
-
     def detrend(self, type='linear'):
         """Remove linear trend from the data.
 
