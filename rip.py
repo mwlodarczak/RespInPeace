@@ -386,7 +386,7 @@ class RIP:
         self.range_top = np.percentile(self.idt[self.peaks], top)
         self.range = self.range_top - self.range_bot
 
-    def estimate_rel(self, lookbehind, min_len=1):
+    def estimate_rel(self, dynamic=False, lookbehind=60, min_len=1):
         """Estimate REL (resting expiratory level).
 
         Since REL is to a large extent influenced by posture shifts,
@@ -395,30 +395,38 @@ class RIP:
         length `lookbehind`.
         """
 
-        lookbehind_samp = lookbehind * self.samp_freq
-        rel = np.zeros(len(self.troughs) - 1)
+        if dynamic:
+            # lookbehind_samp = lookbehind * self.samp_freq
+            rel = np.zeros(len(self.troughs) - 1)
 
-        for i, trough in enumerate(self.troughs[:-1]):
+            for i, trough in enumerate(self.troughs[:-1]):
 
-            prev_troughs = self.troughs[np.logical_and(
-                self.troughs < trough,
-                self.troughs > trough - lookbehind_samp)]
+                prev_troughs = self.troughs[np.logical_and(
+                    self.troughs < trough,
+                    self.troughs > trough - lookbehind)]
 
-            if len(prev_troughs):
-                rel[i] = np.median(self.idt[prev_troughs])
-            else:
-                rel[i] = np.nan
+                if len(prev_troughs):
+                    rel[i] = np.median(self.idt[prev_troughs])
+                else:
+                    rel[i] = np.nan
 
-        self.rel = rel
+            self.rel = rel
+
+        else:
+            self.rel =  np.median(self.idt[self.troughs])
+
 
     def rel_at_time(self, t):
 
-        cycle_offset = self.troughs[:-1] - t
-        inh_ind = len(cycle_offset[cycle_offset <= 0]) - 1
-        if inh_ind >= 0:
-            return self.rel[inh_ind]
+        if isinstance(self.rel, np.ndarray):
+            cycle_offset = self.troughs[:-1] - t
+            inh_ind = len(cycle_offset[cycle_offset <= 0]) - 1
+            if inh_ind >= 0:
+                return self.rel[inh_ind]
+            else:
+                return None
         else:
-            return None
+            return self.rel
 
     # == Feature extraction ==
 
@@ -437,14 +445,18 @@ class RIP:
     def extract_level(self, t, norm=True):
 
         if norm:
-            return (self.idt[t] - self.rel_at_time(t)) / self.range
+            if self.rel_at_time(t) is not None:
+                return (self.idt[t] - self.rel_at_time(t)) / self.range
+            else:
+                return None
         else:
             return (self.idt[t] / self.range)
 
     def extract_features(self, start, end, norm):
         """Extract all features for the given interval."""
 
-        features = {'amplitude': self.extract_amplitude(start, end, norm),
+        features = {'duration': end - start,
+                    'amplitude': self.extract_amplitude(start, end, norm),
                     'slope': self.extract_slope(start, end, norm),
                     'onset_level': self.extract_level(start, norm),
                     'offset_level': self.extract_level(end, norm)}
