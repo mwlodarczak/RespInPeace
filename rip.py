@@ -457,7 +457,13 @@ class RIP:
     # == Calibration methods ==
 
     def calibrate_vc(self, vol, tmin=None, tmax=None, tstart=None, tend=None):
-        """Calibrate the respiratory signal in absolute units of volume."""
+        """Calibrate respiratory signal in absolute units of volume given a
+        vital capacity (VC) manoeuvre. The locations of measurement
+        points need to be identified either by start and end times (in
+        which case the range in the interval is calculated) or by
+        time points of minimum and maximum lung volumes.
+
+        """
 
         if tmin is not None and tmax is not None:
             vc_bot = self.resp.idt[tmin]
