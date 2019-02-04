@@ -454,6 +454,24 @@ class RIP:
                     'offset_level': self.extract_level(end, norm)}
         return features
 
+    # == Calibration methods ==
+
+    def calibrate_vc(self, vol, tmin=None, tmax=None, tstart=None, tend=None):
+        """Calibrate the respiratory signal in absolute units of volume."""
+
+        if tmin is not None and tmax is not None:
+            vc_bot = self.resp.idt[tmin]
+            vc_top = self.resp.idt[tmax]
+        elif tstart is not None and tend is not None:
+            resp_vc = self.resp.idt[tstart:tend]
+            vc_bot = np.min(resp_vc)
+            vc_top = np.max(resp_vc)
+        else:
+            raise ValueError('Missing argument: tmin and tmax or tstart and'
+                             'tend need to be specified.')
+
+        self.resp = (self.resp - vc_bot) / (vc_top - vc_bot)
+
     # == Saving results to file ==
 
     def save_resp(self, filename, filetype='wav'):
