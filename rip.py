@@ -66,7 +66,7 @@ class RIP:
                 'Wrong format of speech segmentation: {}.'.format(
                     type(speech).__name__))
         else:
-            self.speech = None
+            self.speech = speech
             
 
         self._holds = None
@@ -651,10 +651,10 @@ class TimeIndexer:
         sample is returned."""
 
         if method == 'nearest':
-            return np.round(t * self.samp_freq).astype(np.int)
+            return np.round(t * self.samp_freq).astype(np.int) - 1
         elif method == 'ceil':
-            return np.ceil(t * self.samp_freq).astype(np.int)
+            return np.ceil(t * self.samp_freq).astype(np.int) - 1
         elif method == 'floor':
-            return np.floor(t * self.samp_freq).astype(np.int)
+            return np.floor(t * self.samp_freq).astype(np.int) - 1
         else:
             raise ValueError('Unknown method: {}'.format(method))
