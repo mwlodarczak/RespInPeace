@@ -40,7 +40,8 @@ __all__ = ['RIP']
 
 class RIP:
 
-    def __init__(self, resp_data, samp_freq, cycles=None, speech=None):
+    def __init__(self, resp_data, samp_freq, cycles=None, speech=None,
+                 holds=None):
 
         self.resp = resp_data
         self.samp_freq = samp_freq
@@ -69,22 +70,27 @@ class RIP:
             self.speech = speech
             
 
-        self._holds = None
+        if holds is not None and not isinstance(holds, tgt.IntervalTier):
+            raise ValueError(
+                'Wrong format of hold segmentation: {}.'.format(
+                    type(holds).__name__))
+        else:
+            self.holds = holds
 
     # == Alternative initializers ==
 
     @classmethod
-    def from_wav(cls, fname, channel=-1, cycles=None, speech=None):
+    def from_wav(cls, fname, channel=-1, cycles=None, speech=None, holds=None):
         """Read respiratory data from a WAV file."""
         samp_freq, resp = wavfile.read(fname)
         if resp.ndim == 1:
-            return cls(resp, samp_freq, cycles, speech)
+            return cls(resp, samp_freq, cycles, speech, holds)
         else:
-            return cls(resp[:, channel], samp_freq, cycles, speech)
+            return cls(resp[:, channel], samp_freq, cycles, speech, holds)
 
     @classmethod
     def from_csv(cls, fname, samp_freq=None, delimiter=',',
-                 cycles=None, speech=None):
+                 cycles=None, speech=None, holds=None):
         """Read respiratory data from a CSV file.
 
         If `samp_freq` is not specified, the CSV file should have two
@@ -98,7 +104,7 @@ class RIP:
             if samp_freq is None:
                 raise ValueError('Unable to infer sampling frequency.')
             else:
-                return cls(tbl, samp_freq, cycles)
+                return cls(tbl, samp_freq, cycles, speech, holds)
         elif tbl.shape[1] == 2:
             if samp_freq is not None:
                 warnings.warn('Ignoring the timestamp column, assuming the '
@@ -106,7 +112,7 @@ class RIP:
                 return cls(tbl[:, 1], samp_freq)
             else:
                 samp_freq = np.mean(np.diff(tbl[:, 0]))
-                return cls(tbl[:, 1], samp_freq, cycles)
+                return cls(tbl[:, 1], samp_freq, cycles, speech, holds)
         else:
             raise ValueError('Input data has {} columns'
                              'expected 2.'.format(tbl.shape[1]))
@@ -290,13 +296,12 @@ class RIP:
                     holds.append(prev_hold)
                 prev_hold = h
         holds.append(prev_hold)
-        self._holds = np.array(holds)
 
-    # @property
-    # def cycles(self):
-    #     """Start and end times (in seconds) of respiratory cycles"""
-    #     cycl_samp = np.stack([self._troughs[:-1], self._troughs[1:]], axis=1)
-    #     return cycl_samp / self.samp_freq
+        # Build a holds t
+        holds_tier = tgt.IntervalTier(name='holds')
+        for lo, hi in  holds:
+            holds_tier.add_interval(tgt.Interval(lo / self.samp_freq, hi / self.samp_freq, 'hold'))
+        self.holds = holds_tier
 
     @property
     def inhalations(self):
@@ -322,35 +327,8 @@ class RIP:
 
     @property
     def peaks(self):
-        return np.array([i.start_time for i in self.segments if i.text == 'out'])
-
-    # @property
-    # def segments(self):
-    #     """Start and end times (in seconds) of respiratory intervals
-    #     (inhalations and exhalations) sorted by time in increasing
-    #     order.
-    #     """
-    #     seg_samp = np.concatenate(
-    #         (np.stack([self._troughs[:-1], self._peaks], axis=1),
-    #          np.stack([self._peaks, self._troughs[1:]], axis=1)))
-    #     seg_samp_sorted = seg_samp[seg_samp[:, 1].argsort()] / self.samp_freq
-    #     seg_tier = tgt.IntervalTier(name='resp')
-
-    #     for i, (lo, hi) in enumerate(seg_samp_sorted):
-    #         label = 'inhalation' if i % 2 == 0 else 'exhalation'
-    #         seg_tier.add_interval(tgt.Interval(lo, hi, label))
-    #     return seg_tier
-
-    @property
-    def holds(self):
-
-        if self._holds is None:
-            return
-
-        holds_tier = tgt.IntervalTier(name='holds')
-        for lo, hi in  self._holds / self.samp_freq:
-            holds_tier.add_interval(tgt.Interval(lo, hi, 'hold'))
-        return holds_tier
+        return np.array([i.start_time for i in self.segments
+                         if i.text == 'out'])
 
     def find_laughters(self):
         raise NotImplementedError
