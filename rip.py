@@ -295,7 +295,8 @@ class RIP:
                 if prev_hold[1] - prev_hold[0] >= min_hold_dur * self.samp_freq:
                     holds.append(prev_hold)
                 prev_hold = h
-        holds.append(prev_hold)
+        if prev_hold[1] - prev_hold[0] >= min_hold_dur * self.samp_freq:
+            holds.append(prev_hold)
 
         # Build a holds t
         holds_tier = tgt.IntervalTier(name='holds')
