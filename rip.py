@@ -512,7 +512,7 @@ class RIP:
     # == Private methods ==
 
     @staticmethod
-    def butter_lowpass(data, cutoff, fs, order):
+    def _butter_lowpass(data, cutoff, fs, order):
         """A Butterworth low-pass filter."""
 
         nyq = 0.5 * fs
