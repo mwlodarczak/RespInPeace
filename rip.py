@@ -263,9 +263,6 @@ class RIP:
             self.find_cycles()
 
         hold_cand = []
-        # seg_samp = np.concatenate(
-        #     (np.stack([self._troughs[:-1], self._peaks], axis=1),
-        #      np.stack([self._peaks, self._troughs[1:]], axis=1)))
 
         for intr in self.segments:
 
@@ -278,7 +275,45 @@ class RIP:
             if intr_holds is not None:
                 hold_cand += [(lo + h[0],  lo + h[1]) for h in intr_holds]
 
-        if not hold_cand:
+        # Repeat with boundaries shifted by half of a segment.
+        shifts = [i.duration() / 2 for i in self.segments]
+        intr_shifted = []
+
+        for i in range(len(self.segments) - 1):
+            intr_shifted.append(tgt.Interval(self.segments[i].start_time + shifts[i],
+                                             self.segments[i].end_time + shifts[i + 1], ''))
+                        # for i, s in zip(self.segments, shifts)]
+
+        hold_cand2 = []
+
+        for intr in intr_shifted:
+
+            lo = round(intr.start_time * self.samp_freq)
+            hi = round(intr.end_time * self.samp_freq)
+
+            intr_holds = self._find_holds_within_interval(
+                lo, hi, peak_prominence, bins)
+
+            if intr_holds is not None:
+                hold_cand2 += [(lo + h[0],  lo + h[1]) for h in intr_holds]
+
+        hh = hold_cand + hold_cand2
+
+        hh.sort(key=lambda x: x[1])
+
+        c = []
+        temp = hh[0]
+        for i in range(1, len(hh)):
+            cur = hh[i]
+            if temp[1] > cur[1]:
+                temp[1] = max(cur[1], temp[1])
+            else:
+                c.append(temp)
+                temp = cur
+            i += 1
+        c.append(temp)
+
+        if not c:
             return
 
         # Merge holds which lie closer than min_hold_gap and
@@ -310,7 +345,6 @@ class RIP:
                 continue
             holds_tier.add_interval(tgt.Interval(start, end, 'hold'))
         self.holds = holds_tier
-
 
     @property
     def inhalations(self):
