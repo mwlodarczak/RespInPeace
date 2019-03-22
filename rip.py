@@ -512,6 +512,14 @@ class RIP:
     # == Private methods ==
 
     @staticmethod
+    def butter_lowpass(data, cutoff, fs, order):
+        """A Butterworth low-pass filter."""
+
+        nyq = 0.5 * fs
+        b, a = scipy.signal.butter(order, cutoff / nyq, btype='low')
+        return scipy.signal.filtfilt(b, a, data)
+
+    @staticmethod
     def _merge_holds(cycles, holds):
         """Merge respiratory holds with the inhalation and exhalation
         boundaries."""
