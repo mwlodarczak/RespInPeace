@@ -298,11 +298,19 @@ class RIP:
         if prev_hold[1] - prev_hold[0] >= min_hold_dur * self.samp_freq:
             holds.append(prev_hold)
 
-        # Build a holds t
+        # Build a holds tier.
         holds_tier = tgt.IntervalTier(name='holds')
         for lo, hi in  holds:
-            holds_tier.add_interval(tgt.Interval(lo / self.samp_freq, hi / self.samp_freq, 'hold'))
+            start = lo / self.samp_freq
+            end = hi / self.samp_freq
+            # Filter out holds overlapping with speech.
+            if (self.speech is not None and
+                self.speech.get_annotations_between_timepoints(
+                    start, end, True, True)):
+                continue
+            holds_tier.add_interval(tgt.Interval(start, end, 'hold'))
         self.holds = holds_tier
+
 
     @property
     def inhalations(self):
@@ -502,6 +510,14 @@ class RIP:
             tgt.write_to_file(tg, filename, format=filetype)
 
     # == Private methods ==
+
+    @staticmethod
+    def butter_lowpass(data, cutoff, fs, order):
+        """A Butterworth low-pass filter."""
+
+        nyq = 0.5 * fs
+        b, a = scipy.signal.butter(order, cutoff / nyq, btype='low')
+        return scipy.signal.filtfilt(b, a, data)
 
     @staticmethod
     def _merge_holds(cycles, holds):
