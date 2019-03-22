@@ -208,7 +208,8 @@ class RIP:
         """Find respiratory holds within the respiratory interval
         delimited by start and end."""
 
-        intr_resp = self.resp[start:end]
+        intr_resp = self._filt[start:end]
+
         bin_vals, bin_edges = np.histogram(intr_resp, bins)
 
         # Normalise the histogram.
@@ -257,6 +258,12 @@ class RIP:
 
     def find_holds(self, min_hold_dur=0.25, min_hold_gap=0.15,
                    peak_prominence=0.05, bins=100):
+
+        self._filt = self._butter_lowpass(self.resp, highcut=3,
+                                          fs=self.samp_freq, order=8)
+        plt.plot(self.resp)
+        plt.plot(self.filt)
+        plt.show()
 
         # Identify inhalations and exhalation if not present.
         if self.segments is None:
