@@ -353,12 +353,32 @@ class RIP:
             start = lo / self.samp_freq
             end = hi / self.samp_freq
             # Filter out holds overlapping with speech.
-            if (self.speech is not None and
-                self.speech.get_annotations_between_timepoints(
-                    start, end, True, True)):
+            if (self.overlaps_speech(lo, hi)
+                or self.overlaps_inhalation(lo, hi))
                 continue
             holds_tier.add_interval(tgt.Interval(start, end, 'hold'))
         self.holds = holds_tier
+
+    def overlaps_speech(self, start, end):
+        """Check if the interval between `start` and `end` coincides with
+        a speech segment."""
+
+        if self.speech is None:
+            return
+        else:
+            return self.speech.get_annotations_between_timepoints(
+                start, end, left_overlap=True, right_overlap=True)
+
+    def overlaps_inhalation(self, start, end):
+        """Check if the interval between `start` and `end` coincides with
+        an inhalatory segment."""
+
+        if self.segments is None:
+            return
+        else:
+            coinc = self.speech.get_annotations_between_timepoints(
+                start, end, left_overlap=True, right_overlap=True)
+            return any(i.text == 'in' for i in coinc)
 
     @property
     def inhalations(self):
