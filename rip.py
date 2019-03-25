@@ -164,6 +164,17 @@ class RIP:
 
         self.resp = (self.resp - np.mean(self.resp)) / np.std(self.resp)
 
+    def filter_lowpass(self, cutoff, order, inplace=True):
+        """A Butterworth low-pass filter."""
+
+        nyq = 0.5 * self.samp_freq
+        b, a = scipy.signal.butter(order, cutoff / nyq, btype='low')
+        resp_filt = scipy.signal.filtfilt(b, a, self.resp)
+        if inplace:
+            self.resp = resp_filt
+        else:
+            return resp_filt
+
     def find_cycles(self, win_len=10, delta=1, lookahead=1,
                     include_holds=True, **kwargs):
         """Locate peaks and troughs in the signal."""
@@ -259,11 +270,7 @@ class RIP:
     def find_holds(self, min_hold_dur=0.25, min_hold_gap=0.15,
                    peak_prominence=0.05, bins=100):
 
-        self._filt = self._butter_lowpass(self.resp, highcut=3,
-                                          fs=self.samp_freq, order=8)
-        plt.plot(self.resp)
-        plt.plot(self.filt)
-        plt.show()
+        self._filt = self.filter_lowpass(cutoff=3, order=8, inplace=False)
 
         # Identify inhalations and exhalation if not present.
         if self.segments is None:
@@ -551,14 +558,6 @@ class RIP:
             tgt.write_to_file(tg, filename, format=filetype)
 
     # == Private methods ==
-
-    @staticmethod
-    def _butter_lowpass(data, cutoff, fs, order):
-        """A Butterworth low-pass filter."""
-
-        nyq = 0.5 * fs
-        b, a = scipy.signal.butter(order, cutoff / nyq, btype='low')
-        return scipy.signal.filtfilt(b, a, data)
 
     @staticmethod
     def _merge_holds(cycles, holds):
