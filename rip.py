@@ -349,12 +349,12 @@ class RIP:
 
         # Build a holds tier.
         holds_tier = tgt.IntervalTier(name='holds')
-        for lo, hi in  holds:
+        for lo, hi in holds:
             start = lo / self.samp_freq
             end = hi / self.samp_freq
-            # Filter out holds overlapping with speech.
+            # Filter out holds overlapping with speech or inhalation:
             if (self.overlaps_speech(lo, hi)
-                or self.overlaps_inhalation(lo, hi))
+                    or self.overlaps_inhalation(lo, hi)):
                 continue
             holds_tier.add_interval(tgt.Interval(start, end, 'hold'))
         self.holds = holds_tier
