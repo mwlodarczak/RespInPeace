@@ -294,9 +294,9 @@ class RIP:
         intr_shifted = []
 
         for i in range(len(self.segments) - 1):
-            intr_shifted.append(tgt.Interval(self.segments[i].start_time + shifts[i],
-                                             self.segments[i].end_time + shifts[i + 1], ''))
-                        # for i, s in zip(self.segments, shifts)]
+            intr_shifted.append(tgt.Interval(
+                self.segments[i].start_time + shifts[i],
+                self.segments[i].end_time + shifts[i + 1], ''))
 
         hold_cand2 = []
 
@@ -353,8 +353,8 @@ class RIP:
             start = lo / self.samp_freq
             end = hi / self.samp_freq
             # Filter out holds overlapping with speech or inhalation:
-            if (self.overlaps_speech(lo, hi)
-                    or self.overlaps_inhalation(lo, hi)):
+            if (self.overlaps_speech(start, end)
+                    or self.overlaps_inhalation(start, end)):
                 continue
             holds_tier.add_interval(tgt.Interval(start, end, 'hold'))
         self.holds = holds_tier
@@ -366,8 +366,8 @@ class RIP:
         if self.speech is None:
             return
         else:
-            return self.speech.get_annotations_between_timepoints(
-                start, end, left_overlap=True, right_overlap=True)
+            return bool(self.speech.get_annotations_between_timepoints(
+                start, end, left_overlap=True, right_overlap=True))
 
     def overlaps_inhalation(self, start, end):
         """Check if the interval between `start` and `end` coincides with
@@ -376,7 +376,7 @@ class RIP:
         if self.segments is None:
             return
         else:
-            coinc = self.speech.get_annotations_between_timepoints(
+            coinc = self.segments.get_annotations_between_timepoints(
                 start, end, left_overlap=True, right_overlap=True)
             return any(i.text == 'in' for i in coinc)
 
