@@ -2,7 +2,7 @@
 
 Process and analyse breathing belt (RIP) data.
 
-Copyright (C) 2018 Marcin Włodarczak
+Copyright (C) 2018-2019 Marcin Włodarczak
 
 [![DOI](https://zenodo.org/badge/155872024.svg)](https://zenodo.org/badge/latestdoi/155872024)
 
