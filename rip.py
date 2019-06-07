@@ -164,6 +164,17 @@ class RIP:
 
         self.resp = (self.resp - np.mean(self.resp)) / np.std(self.resp)
 
+    def filter_lowpass(self, cutoff, order, inplace=True):
+        """A Butterworth low-pass filter."""
+
+        nyq = 0.5 * self.samp_freq
+        b, a = scipy.signal.butter(order, cutoff / nyq, btype='low')
+        resp_filt = scipy.signal.filtfilt(b, a, self.resp)
+        if inplace:
+            self.resp = resp_filt
+        else:
+            return resp_filt
+
     def find_cycles(self, win_len=10, delta=1, lookahead=1,
                     include_holds=True, **kwargs):
         """Locate peaks and troughs in the signal."""
@@ -208,7 +219,8 @@ class RIP:
         """Find respiratory holds within the respiratory interval
         delimited by start and end."""
 
-        intr_resp = self.resp[start:end]
+        intr_resp = self._filt[start:end]
+
         bin_vals, bin_edges = np.histogram(intr_resp, bins)
 
         # Normalise the histogram.
@@ -258,14 +270,14 @@ class RIP:
     def find_holds(self, min_hold_dur=0.25, min_hold_gap=0.15,
                    peak_prominence=0.05, bins=100):
 
+        self._filt = self.filter_lowpass(cutoff=3, order=8, inplace=False)
+        # self._filt = self.res
+
         # Identify inhalations and exhalation if not present.
         if self.segments is None:
             self.find_cycles()
 
         hold_cand = []
-        # seg_samp = np.concatenate(
-        #     (np.stack([self._troughs[:-1], self._peaks], axis=1),
-        #      np.stack([self._peaks, self._troughs[1:]], axis=1)))
 
         for intr in self.segments:
 
@@ -277,9 +289,6 @@ class RIP:
 
             if intr_holds is not None:
                 hold_cand += [(lo + h[0],  lo + h[1]) for h in intr_holds]
-
-        if not hold_cand:
-            return
 
         # Merge holds which lie closer than min_hold_gap and
         # exclude holds shorter than min_hold_dur.
@@ -300,17 +309,36 @@ class RIP:
 
         # Build a holds tier.
         holds_tier = tgt.IntervalTier(name='holds')
-        for lo, hi in  holds:
+        for lo, hi in holds:
             start = lo / self.samp_freq
             end = hi / self.samp_freq
-            # Filter out holds overlapping with speech.
-            if (self.speech is not None and
-                self.speech.get_annotations_between_timepoints(
-                    start, end, True, True)):
+            # Filter out holds overlapping with speech or inhalation:
+            if (self.overlaps_speech(start, end)
+                    or self.overlaps_inhalation(start, end)):
                 continue
             holds_tier.add_interval(tgt.Interval(start, end, 'hold'))
         self.holds = holds_tier
 
+    def overlaps_speech(self, start, end):
+        """Check if the interval between `start` and `end` coincides with
+        a speech segment."""
+
+        if self.speech is None:
+            return
+        else:
+            return bool(self.speech.get_annotations_between_timepoints(
+                start, end, left_overlap=True, right_overlap=True))
+
+    def overlaps_inhalation(self, start, end):
+        """Check if the interval between `start` and `end` coincides with
+        an inhalatory segment."""
+
+        if self.segments is None:
+            return
+        else:
+            coinc = self.segments.get_annotations_between_timepoints(
+                start, end, left_overlap=True, right_overlap=True)
+            return any(i.text == 'in' for i in coinc)
 
     @property
     def inhalations(self):
@@ -510,14 +538,6 @@ class RIP:
             tgt.write_to_file(tg, filename, format=filetype)
 
     # == Private methods ==
-
-    @staticmethod
-    def _butter_lowpass(data, cutoff, fs, order):
-        """A Butterworth low-pass filter."""
-
-        nyq = 0.5 * fs
-        b, a = scipy.signal.butter(order, cutoff / nyq, btype='low')
-        return scipy.signal.filtfilt(b, a, data)
 
     @staticmethod
     def _merge_holds(cycles, holds):
