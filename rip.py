@@ -145,14 +145,22 @@ class RIP:
 
         self.resp = scipy.signal.detrend(self.resp, type=type)
 
-    def remove_baseline(self, win_len=60):
-        """Remove low-frequency baseline fluctuation.
-
-        By default, a 60-second (rectangular) window is used.
+    def remove_baseline_square(self, win_len=60):
+        """Remove low-frequency baseline fluctuation using a rectangular
+        window
         """
+        baseline = self._fft_smooth(win_len * self.samp_freq)
+        self.resp = self.resp - baseline
 
-        low_passed = self._fft_smooth(win_len * self.samp_freq)
-        self.resp = self.resp - low_passed
+    def remove_baseline_savgol(self, win_len=60, order=3):
+        """Remove low-frequency baseline fluctuation using a Savitzky-Golay
+        filter.
+        """
+        win = win_len * self.samp_freq
+        if win % 2 == 0:
+            win += 1
+        baseline = scipy.signal.savgol_filter(self.resp, win, order)
+        self.resp = self.resp - baseline
 
     def scale(self):
         """Scale the signal by subtracting the mean and dividing
