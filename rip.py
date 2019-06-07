@@ -26,6 +26,8 @@ from scipy.io import wavfile
 import numpy as np
 import pandas as pd
 import scipy.signal
+import scipy.sparse
+import scipy.sparse.linalg
 
 from peakdetect import peakdetect
 import tgt
@@ -161,6 +163,24 @@ class RIP:
             win += 1
         baseline = scipy.signal.savgol_filter(self.resp, win, order)
         self.resp = self.resp - baseline
+
+    def remove_baseline_als(self, lam=1e10, p=0.01, niter=10):
+        """Remove baseline fluctuation using Asymmetric Least Squares
+        Smoothing. The default values of `lam` (smoothness) and `p`
+        (assymetry) might have to be adjusted.
+
+        Source: https://stackoverflow.com/a/50160920 by Torne
+        (https://stackoverflow.com/users/12345/torne)
+        """
+        L = len(self.resp)
+        D = scipy.sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L-2))
+        w = np.ones(L)
+        for i in range(niter):
+            W = scipy.sparse.spdiags(w, 0, L, L)
+            Z = W + lam * D.dot(D.transpose())
+            z = scipy.sparse.linalg.spsolve(Z, w * self.resp)
+            w = p * (self.resp > z) + (1 - p) * (self.resp < z)
+        self.resp = self.resp - z
 
     def scale(self):
         """Scale the signal by subtracting the mean and dividing
