@@ -41,27 +41,45 @@ pd.set_option('compute.use_numexpr', True)
 __all__ = ['RIP']
 
 
-class RIP:
+class Sampled:
+
+    def __init__(self, data, samp_freq):
+
+        self.samples = data
+        self.samp_freq = samp_freq
+        self.t = np.arange(len(self)) / self.samp_freq
+
+    def __getitem__(self, key):
+        return self.samples[key]
+
+    def __iter__(self):
+        return iter(self.samples)
+
+    def __len__(self):
+        """Return the number of samples."""
+        return len(self.samples)
+
+    def __repr__(self):
+        return '{}(samp_freq={}, nsamples={})'.format(
+            type(self).__name__, self.samp_freq, len(self))
+
+    @property
+    def idt(self):
+        """Return an indexer to access samples by time stamp values."""
+        return TimeIndexer(self.samples, self.samp_freq)
+
+
+class RIP(Sampled):
 
     def __init__(self, resp_data, samp_freq, cycles=None, speech=None,
                  holds=None):
 
-        self.resp = resp_data
-        self.samp_freq = samp_freq
-
-        # TODO: Do we actually need self.t? They can be always computed on the fly.
-        self.t = np.arange(len(self.resp)) / self.samp_freq
-        self.dur = len(self.resp) / self.samp_freq
+        super(RIP, self).__init__(resp_data, samp_freq)
 
         self.rel = None
         self.range = None
         self.range_bot = None
         self.range_top = None
-
-        # if cycles is not None:
-        #     self._troughs, self._peaks = self._read_cycles(cycles)
-        # else:
-        #     self._peaks, self._troughs = None, None
 
         self.segments = cycles
 
@@ -119,26 +137,7 @@ class RIP:
         else:
             raise ValueError('Input data has {} columns'
                              'expected 2.'.format(tbl.shape[1]))
-
-    def __getitem__(self, key):
-        return self.resp[key]
-
-    @property
-    def idt(self):
-        """Return an indexer to access samples by time stamp values."""
-        return TimeIndexer(self.resp, self.samp_freq)
-
-    def __iter__(self):
-        return iter(self.resp)
-
-    def __len__(self):
-        """Return the number of samples."""
-        return len(self.resp)
-
-    def __repr__(self):
-        return '{}(samp_freq={}, nsamples={})'.format(
-            type(self).__name__, self.samp_freq, len(self))
-
+        
     def detrend(self, type='linear'):
         """Remove linear trend from the data.
 
@@ -146,14 +145,14 @@ class RIP:
         Otherwise, if `type == 'constant'`, the mean is taken out.
         """
 
-        self.resp = scipy.signal.detrend(self.resp, type=type)
+        self.samples = scipy.signal.detrend(self.samples, type=type)
 
     def remove_baseline_square(self, win_len=60):
         """Remove low-frequency baseline fluctuation using a rectangular
         window
         """
         baseline = self._fft_smooth(win_len * self.samp_freq)
-        self.resp = self.resp - baseline
+        self.samples = self.samples - baseline
 
     def remove_baseline_savgol(self, win_len=60, order=3):
         """Remove low-frequency baseline fluctuation using a Savitzky-Golay
@@ -162,8 +161,8 @@ class RIP:
         win = win_len * self.samp_freq
         if win % 2 == 0:
             win += 1
-        baseline = scipy.signal.savgol_filter(self.resp, win, order)
-        self.resp = self.resp - baseline
+        baseline = scipy.signal.savgol_filter(self.samples, win, order)
+        self.samples = self.samples - baseline
 
     def remove_baseline_als(self, lam=1e10, p=0.01, niter=10):
         """Remove baseline fluctuation using Asymmetric Least Squares
@@ -173,15 +172,15 @@ class RIP:
         Source: https://stackoverflow.com/a/50160920 by Torne
         (https://stackoverflow.com/users/12345/torne)
         """
-        L = len(self.resp)
+        L = len(self.samples)
         D = scipy.sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L-2))
         w = np.ones(L)
         for i in range(niter):
             W = scipy.sparse.spdiags(w, 0, L, L)
             Z = W + lam * D.dot(D.transpose())
-            z = scipy.sparse.linalg.spsolve(Z, w * self.resp)
-            w = p * (self.resp > z) + (1 - p) * (self.resp < z)
-        self.resp = self.resp - z
+            z = scipy.sparse.linalg.spsolve(Z, w * self.samples)
+            w = p * (self.samples > z) + (1 - p) * (self.samples < z)
+        self.samples = self.samples - z
 
     def scale(self):
         """Scale the signal by subtracting the mean and dividing
@@ -191,16 +190,16 @@ class RIP:
         of 1.
         """
 
-        self.resp = (self.resp - np.mean(self.resp)) / np.std(self.resp)
+        self.samples = (self.samples - np.mean(self.samples)) / np.std(self.samples)
 
     def filter_lowpass(self, cutoff, order, inplace=True):
         """A Butterworth low-pass filter."""
 
         nyq = 0.5 * self.samp_freq
         b, a = scipy.signal.butter(order, cutoff / nyq, btype='low')
-        resp_filt = scipy.signal.filtfilt(b, a, self.resp)
+        resp_filt = scipy.signal.filtfilt(b, a, self.samples)
         if inplace:
-            self.resp = resp_filt
+            self.samples = resp_filt
         else:
             return resp_filt
 
@@ -437,12 +436,13 @@ class RIP:
             if win_len % 2 != 1:
                 raise ValueError('Window length must be odd.')
 
-            rel = scipy.signal.medfilt(self.idt[self.troughs], win_len)
-            interp = UnivariateSpline(self.troughs, rel, k=3, s=0)
-            self.rel = interp(np.linspace(self.t[0], self.t[-1], len(self)))
+            troughs_med = scipy.signal.medfilt(self.idt[self.troughs], win_len)
+            interp = UnivariateSpline(self.troughs, troughs_med, k=3, s=0)
+            rel = interp(np.linspace(self.t[0], self.t[-1], len(self)))
         else:
-            rel = np.median(self.idt[self.troughs])
-            self.rel = np.full(len(self), rel)
+            rel = np.full(len(self), np.median(self.idt[self.troughs]))
+
+        self.rel = Sampled(rel, self.samp_freq)
 
     # == Feature extraction ==
 
@@ -461,8 +461,8 @@ class RIP:
     def extract_level(self, t, norm=True):
 
         if norm:
-            if self.rel_at_time(t) is not None:
-                return (self.idt[t] - self.rel_at_time(t)) / self.range
+            if self.rel.idt[t] is not None:
+                return (self.idt[t] - self.rel.idt[t]) / self.range
             else:
                 return None
         else:
@@ -490,17 +490,17 @@ class RIP:
         """
 
         if tmin is not None and tmax is not None:
-            vc_bot = self.resp.idt[tmin]
-            vc_top = self.resp.idt[tmax]
+            vc_bot = self.samples.idt[tmin]
+            vc_top = self.samples.idt[tmax]
         elif tstart is not None and tend is not None:
-            resp_vc = self.resp.idt[tstart:tend]
+            resp_vc = self.samples.idt[tstart:tend]
             vc_bot = np.min(resp_vc)
             vc_top = np.max(resp_vc)
         else:
             raise ValueError('Missing argument: tmin and tmax or tstart and'
                              'tend need to be specified.')
 
-        self.resp = (self.resp - vc_bot) / (vc_top - vc_bot)
+        self.samples = (self.samples - vc_bot) / (vc_top - vc_bot)
 
     # == Saving results to file ==
 
@@ -508,14 +508,14 @@ class RIP:
         """Save respiratory data to file."""
 
         if filetype == 'wav':
-            wavfile.write(filename, data=self.resp, rate=self.samp_freq)
+            wavfile.write(filename, data=self.samples, rate=self.samp_freq)
         elif filetype == 'table':
             warnings.warn('Saving to a plain-text table. Only time stamps'
                           'and respiratory values will be saved')
 
             with open(filename, 'w') as fout:
                 csv_out = csv.writer(fout)
-                csv_out.writerows(zip(self.t, self.resp))
+                csv_out.writerows(zip(self.t, self.samples))
         else:
             raise ValueError('Unsupported filetype: {}.'.format(filetype))
 
@@ -595,10 +595,10 @@ class RIP:
         of size `win_size`.
         """
 
-        resp_rolling = pd.Series(self.resp).rolling(win_len, center=True)
+        resp_rolling = pd.Series(self.samples).rolling(win_len, center=True)
         window_mean = resp_rolling.mean().values
         window_std = resp_rolling.std().values
-        return (self.resp - window_mean) / (window_std + noise_level)
+        return (self.samples - window_mean) / (window_std + noise_level)
 
     def _fft_smooth(self, win_len):
         """Zero-phase low-pass filter using FFT convolution.
@@ -611,12 +611,12 @@ class RIP:
         press).
         """
 
-        l = len(self.resp)
+        l = len(self.samples)
         win = np.zeros(l)
         mar_left = math.floor((l - win_len + 1) / 2)
         mar_right = math.floor((l + win_len) / 2)
         win[mar_left: mar_right] = 1
-        return scipy.signal.fftconvolve(self.resp, win, mode='same') / win_len
+        return scipy.signal.fftconvolve(self.samples, win, mode='same') / win_len
 
     # def _read_cycles(self, cycles):
     #     """Read an external cycles annotation and return boundary indices."""
@@ -650,14 +650,14 @@ class TimeIndexer:
 
     def __init__(self, resp, samp_freq):
 
-        self.resp = resp
+        self.samples = resp
         self.samp_freq = samp_freq
 
     def __getitem__(self, key):
         if (isinstance(key, int) or isinstance(key, float)
             or isinstance(key, np.ndarray)):
             idx = self._time_to_sample(key, method='nearest')
-            return self.resp[idx]
+            return self.samples[idx]
         elif isinstance(key, slice):
             start = self._time_to_sample(key.start, method='ceil')
             end = self._time_to_sample(key.stop, method='floor')
@@ -665,7 +665,7 @@ class TimeIndexer:
                 step = self._time_to_sample(key.step)
             else:
                 step = key.step
-            return self.resp[start:end:step]
+            return self.samples[start:end:step]
         else:
             raise IndexError
 
