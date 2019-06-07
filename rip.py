@@ -271,6 +271,7 @@ class RIP:
                    peak_prominence=0.05, bins=100):
 
         self._filt = self.filter_lowpass(cutoff=3, order=8, inplace=False)
+        # self._filt = self.res
 
         # Identify inhalations and exhalation if not present.
         if self.segments is None:
@@ -288,47 +289,6 @@ class RIP:
 
             if intr_holds is not None:
                 hold_cand += [(lo + h[0],  lo + h[1]) for h in intr_holds]
-
-        # Repeat with boundaries shifted by half of a segment.
-        shifts = [i.duration() / 2 for i in self.segments]
-        intr_shifted = []
-
-        for i in range(len(self.segments) - 1):
-            intr_shifted.append(tgt.Interval(
-                self.segments[i].start_time + shifts[i],
-                self.segments[i].end_time + shifts[i + 1], ''))
-
-        hold_cand2 = []
-
-        for intr in intr_shifted:
-
-            lo = round(intr.start_time * self.samp_freq)
-            hi = round(intr.end_time * self.samp_freq)
-
-            intr_holds = self._find_holds_within_interval(
-                lo, hi, peak_prominence, bins)
-
-            if intr_holds is not None:
-                hold_cand2 += [(lo + h[0],  lo + h[1]) for h in intr_holds]
-
-        hh = hold_cand + hold_cand2
-
-        hh.sort(key=lambda x: x[1])
-
-        c = []
-        temp = hh[0]
-        for i in range(1, len(hh)):
-            cur = hh[i]
-            if temp[1] > cur[1]:
-                temp[1] = max(cur[1], temp[1])
-            else:
-                c.append(temp)
-                temp = cur
-            i += 1
-        c.append(temp)
-
-        if not c:
-            return
 
         # Merge holds which lie closer than min_hold_gap and
         # exclude holds shorter than min_hold_dur.
