@@ -28,6 +28,7 @@ import pandas as pd
 import scipy.signal
 import scipy.sparse
 import scipy.sparse.linalg
+from scipy.interpolate import UnivariateSpline
 
 from peakdetect import peakdetect
 import tgt
@@ -421,47 +422,27 @@ class RIP:
         self.range_top = np.percentile(self.idt[self.peaks], top)
         self.range = self.range_top - self.range_bot
 
-    def estimate_rel(self, dynamic=False, lookbehind=60, min_len=1):
+    def estimate_rel(self, dynamic=False, win_len=11):
         """Estimate REL (resting expiratory level).
-
-        Since REL is to a large extent influenced by posture shifts,
-        REL is evaluated in a dynamic fashion as the median signal
-        level at respiratory troughs in the preceding interval of
-        length `lookbehind`.
+        
+        If `dynamic==False`, REL is calculated as the median value of
+        all troughs in the resiratory signal. Otherwise, REL is
+        estimated in a dynamic fashion to allow for posture shifts.
+        This is done by calculating the median level of all troughs in
+        a window of specified size (by default, `win_len=11`, i.e. REL
+        is calcualte as the median level of five preceding and five
+        following troughs).
         """
-
         if dynamic:
-            # lookbehind_samp = lookbehind * self.samp_freq
-            rel = np.zeros(len(self.troughs) - 1)
+            if win_len % 2 != 1:
+                raise ValueError('Window length must be odd.')
 
-            for i, trough in enumerate(self.troughs[:-1]):
-
-                prev_troughs = self.troughs[np.logical_and(
-                    self.troughs < trough,
-                    self.troughs > trough - lookbehind)]
-
-                if len(prev_troughs):
-                    rel[i] = np.median(self.idt[prev_troughs])
-                else:
-                    rel[i] = np.nan
-
-            self.rel = rel
-
+            rel = scipy.signal.medfilt(self.idt[self.troughs], win_len)
+            interp = UnivariateSpline(self.troughs, rel, k=3, s=0)
+            self.rel = interp(np.linspace(self.t[0], self.t[-1], len(self)))
         else:
-            self.rel =  np.median(self.idt[self.troughs])
-
-
-    def rel_at_time(self, t):
-
-        if isinstance(self.rel, np.ndarray):
-            cycle_offset = self.troughs[:-1] - t
-            inh_ind = len(cycle_offset[cycle_offset <= 0]) - 1
-            if inh_ind >= 0:
-                return self.rel[inh_ind]
-            else:
-                return None
-        else:
-            return self.rel
+            rel = np.median(self.idt[self.troughs])
+            self.rel = np.full(len(self), rel)
 
     # == Feature extraction ==
 
