@@ -30,7 +30,7 @@ Additionally, some examples of how to use RespInPeace are included in [`notebook
 
 ## Citation
 
-You can cite a specific release of RespInPeace using its DOI. The DOI of the latest release can be found [here](https://zenodo.org/badge/latestdoi/155872024). If you do not want to refer to a specific release, you can use [10.5281/zenodo.2539335](https://doi.org/10.5281/zenodo.2539335) to refer to all versions.
+You can cite a specific release of RespInPeace using its DOI. The DOI of the latest release can be found [here](https://doi.org/10.5281/zenodo.2539335). If for some reason you do not want to refer to a specific release, you can use 10.5281/zenodo.2539335 to refer to all versions.
 
 ## Acknowledgments
 
