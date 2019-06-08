@@ -437,7 +437,7 @@ class Resp(Sampled):
         else:
             rel = np.full(len(self), np.median(self.idt[self.troughs]))
 
-        self.rel = Sampled(rel, self.samp_freq)
+        self.samples = self.samples - rel
 
     # == Feature extraction ==
 
@@ -453,15 +453,9 @@ class Resp(Sampled):
         dur = end - start
         return self.extract_amplitude(start, end, norm) / dur
 
-    def extract_level_comp_rel(self, t, norm=True):
+    def extract_level_norm(self, t):
 
-        if norm:
-            if self.rel.idt[t] is not None:
-                return (self.idt[t] - self.rel.idt[t]) / self.range
-            else:
-                return None
-        else:
-            return self.idt[t] - self.rel.idt[t]
+        return self.idt[t] / self.range
 
     def extract_features(self, start, end, norm=True):
         """Extract all features for the given interval."""
@@ -469,8 +463,8 @@ class Resp(Sampled):
         features = {'duration': end - start,
                     'amplitude': self.extract_amplitude(start, end, norm),
                     'slope': self.extract_slope(start, end, norm),
-                    'onset_level': self.extract_level(start, norm),
-                    'offset_level': self.extract_level(end, norm)}
+                    'onset_level': self.extract_level_norm(start),
+                    'offset_level': self.extract_level_norm(end)}
         return features
 
     # == Calibration methods ==
