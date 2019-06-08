@@ -79,7 +79,6 @@ class Resp(Sampled):
 
         super(Resp, self).__init__(resp_data, samp_freq)
 
-        self.rel = None
         self.range = None
         self.range_bot = None
         self.range_top = None
@@ -435,7 +434,7 @@ class Resp(Sampled):
             interp = UnivariateSpline(self.troughs, troughs_med, k=3, s=0)
             rel = interp(np.linspace(0, self.t[-1], len(self)))
         else:
-            rel = np.full(len(self), np.median(self.idt[self.troughs]))
+            rel = np.median(self.idt[self.troughs])
 
         self.samples = self.samples - rel
 
