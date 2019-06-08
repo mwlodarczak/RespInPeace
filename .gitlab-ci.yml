@@ -8,9 +8,6 @@ pages:
   - cd doc
   - make html
   - pwd
-  - ls .
-  - ls build/
-  - ls build/html/
   - mv build/html/ ../public/
   artifacts:
     paths:
