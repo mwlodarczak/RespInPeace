@@ -3,7 +3,8 @@ image: alpine
 pages:
   script:
   - apk --no-cache add py3-pip python3-dev
-  - pip3 install sphinx scipy numpy pandas tgt
+  - pip3 install tgt
+  - apt-get install python3-numpy python3-scipy python3-pandas python3-sphinx
   - apk --no-cache add make
   - cd doc
   - make html
