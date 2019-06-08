@@ -24,9 +24,9 @@ copyright = u'2019, Marcin Włodarczak'
 author = u'Marcin Włodarczak'
 
 # The short X.Y version
-version = ''
+version = '6.0'
 # The full version, including alpha/beta/rc tags
-release = '0.3.2'
+release = ''
 
 
 # -- General configuration ---------------------------------------------------
