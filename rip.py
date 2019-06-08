@@ -38,10 +38,11 @@ import tgt
 pd.set_option('compute.use_bottleneck', True)
 pd.set_option('compute.use_numexpr', True)
 
-__all__ = ['Resp', 'Sampled']
+__all__ = ['Resp', 'Sampled', 'TimeIndexer']
 
 
 class Sampled:
+    '''A sampled signal.'''
 
     def __init__(self, data, samp_freq):
 
@@ -71,6 +72,7 @@ class Sampled:
 
 
 class Resp(Sampled):
+    '''A respiratory signal'''
 
     def __init__(self, resp_data, samp_freq, cycles=None, speech=None,
                  holds=None):
@@ -220,9 +222,6 @@ class Resp(Sampled):
 
         assert len(peaks) == len(troughs) - 1, \
             'Expected {} peaks, got {}'.format(len(troughs) - 1, len(peaks))
-
-        # self._peaks = np.array(peaks)[:, 0].astype('int')
-        # self._troughs = np.array(troughs)[:, 0].astype('int')
 
         # Store the results in an IntervalTier.
         inhalations = zip(troughs[:-1], peaks)
@@ -374,17 +373,12 @@ class Resp(Sampled):
         """Start and end times (in seconds) of inhalations."""
 
         return self.segments.get_annotations_with_matching_text('in')
-        # inh_samp = np.stack([self._troughs[:-1], self._peaks], axis=1)
-        # return inh_samp / self.samp_freq
 
     @property
     def exhalations(self):
         """Start and end times (in seconds) of exhalations"""
 
         return self.segments.get_annotations_with_matching_text('out')
-
-        # exh_samp = np.stack([self._peaks, self._troughs[1:]], axis=1)
-        # return exh_samp / self.samp_freq
 
     @property
     def troughs(self):
@@ -647,7 +641,7 @@ class Resp(Sampled):
 
 
 class TimeIndexer:
-    """An indexer to access samples by time stamps."""
+    '''An indexer to access samples by time stamps.'''
 
     def __init__(self, resp, samp_freq):
 
