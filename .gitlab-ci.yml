@@ -3,7 +3,9 @@ image: debian
 pages:
   script:
   - apt-get update
-  - apt-get install --assume-yes --no-install-recommends python3-pip make python3-numpy python3-scipy python3-pandas python3-sphinx python3-setuptools
+  - apt-get install --assume-yes --no-install-recommends python3-pip make \
+    python3-numpy python3-scipy python3-pandas python3-sphinx python3-setuptools \
+    python3-matplotlib
   - pip3 install tgt
   - cd doc
   - make html
