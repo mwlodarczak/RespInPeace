@@ -12,5 +12,4 @@ pages:
     paths:
     - public
   only:
-  - master
   - tags
