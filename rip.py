@@ -90,7 +90,6 @@ class Resp(Sampled):
                     type(speech).__name__))
         else:
             self.speech = speech
-            
 
         if holds is not None and not isinstance(holds, tgt.IntervalTier):
             raise ValueError(
@@ -138,7 +137,7 @@ class Resp(Sampled):
         else:
             raise ValueError('Input data has {} columns'
                              'expected 2.'.format(tbl.shape[1]))
-        
+
     def detrend(self, type='linear'):
         """Remove linear trend from the data.
 
@@ -191,7 +190,8 @@ class Resp(Sampled):
         of 1.
         """
 
-        self.samples = (self.samples - np.mean(self.samples)) / np.std(self.samples)
+        mean, sd = np.mean(self.samples), np.std(self.samples)
+        self.samples = (self.samples - mean) / sd
 
     def filter_lowpass(self, cutoff, order, inplace=True):
         """A Butterworth low-pass filter."""
@@ -424,7 +424,7 @@ class Resp(Sampled):
 
     def estimate_rel(self, dynamic=False, win_len=11):
         """Estimate REL (resting expiratory level).
-        
+
         If `dynamic==False`, REL is calculated as the median value of
         all troughs in the resiratory signal. Otherwise, REL is
         estimated in a dynamic fashion to allow for posture shifts.
@@ -439,7 +439,7 @@ class Resp(Sampled):
 
             troughs_med = scipy.signal.medfilt(self.idt[self.troughs], win_len)
             interp = UnivariateSpline(self.troughs, troughs_med, k=3, s=0)
-            rel = interp(np.linspace(self.t[0], self.t[-1], len(self)))
+            rel = interp(np.linspace(0, self.t[-1], len(self)))
         else:
             rel = np.full(len(self), np.median(self.idt[self.troughs]))
 
@@ -459,7 +459,7 @@ class Resp(Sampled):
         dur = end - start
         return self.extract_amplitude(start, end, norm) / dur
 
-    def extract_level(self, t, norm=True):
+    def extract_level_comp_rel(self, t, norm=True):
 
         if norm:
             if self.rel.idt[t] is not None:
@@ -467,9 +467,9 @@ class Resp(Sampled):
             else:
                 return None
         else:
-            return (self.idt[t] / self.range)
+            return self.idt[t] - self.rel.idt[t]
 
-    def extract_features(self, start, end, norm):
+    def extract_features(self, start, end, norm=True):
         """Extract all features for the given interval."""
 
         features = {'duration': end - start,
@@ -612,10 +612,10 @@ class Resp(Sampled):
         press).
         """
 
-        l = len(self.samples)
-        win = np.zeros(l)
-        mar_left = math.floor((l - win_len + 1) / 2)
-        mar_right = math.floor((l + win_len) / 2)
+        nsamples = len(self)
+        win = np.zeros(nsamples)
+        mar_left = math.floor((nsamples - win_len + 1) / 2)
+        mar_right = math.floor((nsamples + win_len) / 2)
         win[mar_left: mar_right] = 1
         return scipy.signal.fftconvolve(self.samples, win, mode='same') / win_len
 
@@ -656,7 +656,7 @@ class TimeIndexer:
 
     def __getitem__(self, key):
         if (isinstance(key, int) or isinstance(key, float)
-            or isinstance(key, np.ndarray)):
+                or isinstance(key, np.ndarray)):
             idx = self._time_to_sample(key, method='nearest')
             return self.samples[idx]
         elif isinstance(key, slice):
