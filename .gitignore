@@ -1,5 +1,6 @@
 .ipynb_checkpoints/
 build/
 __pycache__/
-examples/*.TextGrid
-examples/resp_saved.wav
+!notebooks/resp.wav
+notebooks/*.TextGrid
+notebooks/*.wav

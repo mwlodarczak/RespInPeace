@@ -15,13 +15,20 @@ python3 setup.py install
 
 ## Documentation
 
+To generate HTML documentation using Sphinx, run:
+```
+cd doc
+make html
+```
+The files are saved to `doc/build/html/`.
+
 The documentation is very much work in progress but some examples of
 how to use RespInPeace are included in
 [`examples/demo.ipynb`](./examples/demo.ipynb).
 
 ## Citation
 
-You can cite a specific release of RespInPeace using its DOI. The DOI of the latest release can be found [here](https://zenodo.org/badge/latestdoi/155872024). If you do not want to refer to a specific release, you can use  ([10.5281/zenodo.2539335](https://doi.org/10.5281/zenodo.2539335)) to refer to all versions.
+You can cite a specific release of RespInPeace using its DOI. The DOI of the latest release can be found [here](https://zenodo.org/badge/latestdoi/155872024). If you do not want to refer to a specific release, you can use [10.5281/zenodo.2539335](https://doi.org/10.5281/zenodo.2539335) to refer to all versions.
 
 ## Acknowledgments
 
