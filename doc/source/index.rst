@@ -8,6 +8,7 @@ RespInPeace
 RespInPeace is a Python toolkit for processing respiratory data collected using Respiratory Inductance Plethysmography (RIP). It provides methods for signal normalisation, calibration, parametrisation as well as for detection of respiratory events, such as inhalations, exhalations and breath holds.
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
 
    api

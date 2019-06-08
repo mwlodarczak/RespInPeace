@@ -15,16 +15,16 @@ python3 setup.py install
 
 ## Documentation
 
-To generate HTML documentation using Sphinx, run:
+Online documentation can be viewed at [mwlodarczak.gitlab.io/RespInPeace](https://mwlodarczak.gitlab.io/RespInPeace).
+
+To generate offline HTML documentation using Sphinx, run:
 ```
 cd doc
 make html
 ```
-The files are saved to `doc/build/html/`.
+The files are saved in `doc/build/html/`.
 
-The documentation is very much work in progress but some examples of
-how to use RespInPeace are included in
-[`examples/demo.ipynb`](./examples/demo.ipynb).
+Additionally, some examples of how to use RespInPeace are included in [`notebooks/demo.ipynb`](./notebooks/demo.ipynb).
 
 ## Citation
 
