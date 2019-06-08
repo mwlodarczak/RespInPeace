@@ -2,8 +2,8 @@ image: jupyter/scipy-notebook
 
 pages:
   script:
-  - apt-get install python3-pip make
-  - pip3 install tgt sphinx
+  - sudo apt-get install python3-pip make
+  - sudo pip3 install tgt sphinx
   - cd doc
   - make html
   - mv build/html/ ../public/
