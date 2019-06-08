@@ -20,8 +20,8 @@
 # -- Project information -----------------------------------------------------
 
 project = 'RespInPeace'
-copyright = '2019, Marcin Włodarczak'
-author = 'Marcin Włodarczak'
+copyright = u'2019, Marcin Włodarczak'
+author = u'Marcin Włodarczak'
 
 # The short X.Y version
 version = ''
