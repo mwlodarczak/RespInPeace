@@ -4,6 +4,15 @@ Process and analyse breathing belt (RIP) data.
 
 Copyright (C) 2018-2019 Marcin Włodarczak
 
+## Installation
+
+To install the latest version from GitLab, run:
+```
+git clone https://gitlab.com/mwlodarczak/RespInPeace.git
+cd RespInPeace
+python3 setup.py install
+``` 
+
 ## Documentation
 
 The documentation is very much work in progress but some examples of
@@ -12,9 +21,7 @@ how to use RespInPeace are included in
 
 ## Citation
 
-You can cite a specific release of RespInPeace using its DOI. The DOI of the latest release can be found [here](https://zenodo.org/badge/latestdoi/155872024).
-
-If you do not want to refer to a specific release, you can use  ([10.5281/zenodo.2539335](https://doi.org/10.5281/zenodo.2539335)) to refer to all versions.
+You can cite a specific release of RespInPeace using its DOI. The DOI of the latest release can be found [here](https://zenodo.org/badge/latestdoi/155872024). If you do not want to refer to a specific release, you can use  ([10.5281/zenodo.2539335](https://doi.org/10.5281/zenodo.2539335)) to refer to all versions.
 
 ## Acknowledgments
 
