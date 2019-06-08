@@ -18,7 +18,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from operator import itemgetter
-import csv
 import math
 import warnings
 
@@ -110,34 +109,7 @@ class Resp(Sampled):
         else:
             return cls(resp[:, channel], samp_freq, cycles, speech, holds)
 
-    @classmethod
-    def from_csv(cls, fname, samp_freq=None, delimiter=',',
-                 cycles=None, speech=None, holds=None):
-        """Read respiratory data from a CSV file.
-
-        If `samp_freq` is not specified, the CSV file should have two
-        columns: the first column should list time stamps and the second
-        column should list respiratory values.
-        """
-
-        tbl = np.loadtxt(fname, delimiter=delimiter)
-
-        if tbl.ndim == 1:
-            if samp_freq is None:
-                raise ValueError('Unable to infer sampling frequency.')
-            else:
-                return cls(tbl, samp_freq, cycles, speech, holds)
-        elif tbl.shape[1] == 2:
-            if samp_freq is not None:
-                warnings.warn('Ignoring the timestamp column, assuming the '
-                              'sampling frequency of {}'.format(samp_freq))
-                return cls(tbl[:, 1], samp_freq)
-            else:
-                samp_freq = np.mean(np.diff(tbl[:, 0]))
-                return cls(tbl[:, 1], samp_freq, cycles, speech, holds)
-        else:
-            raise ValueError('Input data has {} columns'
-                             'expected 2.'.format(tbl.shape[1]))
+    # == Detrending and baseline-related methods
 
     def detrend(self, type='linear'):
         """Remove linear trend from the data.
@@ -392,17 +364,6 @@ class Resp(Sampled):
     def find_laughters(self):
         raise NotImplementedError
 
-    def _check_cycles(self):
-        # TODO: if the speech annotation is available, make sure
-        # no inhalation coincides with speech intervals.
-        raise NotImplementedError
-
-    def classify_cycles(self):
-        """Classify respiratory cycles (intervals from inhalation onsets to
-        exhalation offsets) as "speech", "silence" or "VSU".
-        """
-        raise NotImplementedError
-
     def estimate_range(self, bot=5, top=95):
         """Calculate respiratory range.
 
@@ -529,7 +490,6 @@ class Resp(Sampled):
 
         if 'cycles' in tiers:
             if merge_holds:
-                segments_merged= tgt.IntervalTier(name='cycles')
                 tg.add_tier(self.merge_holds(self.segments, self.holds))
             else:
                 tg.add_tier(self.segments)
