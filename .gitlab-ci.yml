@@ -7,10 +7,6 @@ pages:
   - apk --no-cache add make
   - cd doc
   - make html
-  - pwd
-  - ls .
-  - ls build/
-  - ls build/html/
   - mv build/html/ ../public/
   artifacts:
     paths:
