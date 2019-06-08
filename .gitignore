@@ -1,2 +1,5 @@
 .ipynb_checkpoints/
+build/
 __pycache__/
+examples/*.TextGrid
+examples/*.wav
