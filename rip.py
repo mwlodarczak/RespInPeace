@@ -38,7 +38,7 @@ import tgt
 pd.set_option('compute.use_bottleneck', True)
 pd.set_option('compute.use_numexpr', True)
 
-__all__ = ['RIP']
+__all__ = ['RIP', 'Sampled']
 
 
 class Sampled:
