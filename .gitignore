@@ -2,4 +2,4 @@
 build/
 __pycache__/
 examples/*.TextGrid
-examples/*.wav
+examples/resp_saved.wav
