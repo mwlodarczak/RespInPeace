@@ -48,6 +48,7 @@ class Sampled:
         self.samples = data
         self.samp_freq = samp_freq
         self.t = np.arange(len(self)) / self.samp_freq
+        self.dur = len(self) / self.samp_freq
 
     def __getitem__(self, key):
         return self.samples[key]
