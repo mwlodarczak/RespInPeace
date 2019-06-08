@@ -426,6 +426,10 @@ class Resp(Sampled):
         is calcualte as the median level of five preceding and five
         following troughs).
         """
+
+        if self.troughs is None:
+            raise ValueError('The value self.troughs is None.')
+
         if dynamic:
             if win_len % 2 != 1:
                 raise ValueError('Window length must be odd.')
