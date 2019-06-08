@@ -1,9 +1,9 @@
-image: jupyter/scipy-notebook
+image: debian
 
 pages:
   script:
-  - sudo apt-get install python3-pip make
-  - sudo pip3 install tgt sphinx
+  - apt-get install python3-pip make python3-numpy python3-scipy python3-pandas python3-sphinx
+  - pip3 install tgt
   - cd doc
   - make html
   - mv build/html/ ../public/
