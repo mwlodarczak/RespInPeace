@@ -4,6 +4,8 @@ Process and analyse breathing belt (RIP) data.
 
 Copyright (C) 2018-2019 Marcin Włodarczak
 
+The official repository for this project is hosted at [gitlab.com/mwlodarczak/RespInPeace/](https://gitlab.com/mwlodarczak/RespInPeace/).
+
 ## Installation
 
 To install the latest version from GitLab, run:
