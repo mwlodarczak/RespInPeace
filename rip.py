@@ -38,7 +38,7 @@ import tgt
 pd.set_option('compute.use_bottleneck', True)
 pd.set_option('compute.use_numexpr', True)
 
-__all__ = ['RIP', 'Sampled']
+__all__ = ['Resp', 'Sampled']
 
 
 class Sampled:
@@ -70,12 +70,12 @@ class Sampled:
         return TimeIndexer(self.samples, self.samp_freq)
 
 
-class RIP(Sampled):
+class Resp(Sampled):
 
     def __init__(self, resp_data, samp_freq, cycles=None, speech=None,
                  holds=None):
 
-        super(RIP, self).__init__(resp_data, samp_freq)
+        super(Resp, self).__init__(resp_data, samp_freq)
 
         self.rel = None
         self.range = None
