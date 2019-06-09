@@ -45,7 +45,10 @@ class Sampled:
 
     def __init__(self, data, samp_freq):
 
-        self.samples = data
+        if not isinstance(data, np.ndarray):
+            self.samples = np.array(data)
+        else:
+            self.samples = data
         self.samp_freq = samp_freq
         self.t = np.arange(len(self)) / self.samp_freq
         self.dur = len(self) / self.samp_freq
@@ -63,6 +66,96 @@ class Sampled:
     def __repr__(self):
         return '{}(samp_freq={}, nsamples={})'.format(
             type(self).__name__, self.samp_freq, len(self))
+
+    def __add__(self, other):
+        return self.samples + other
+
+    def __radd__(self, other):
+        return other + self.samples
+
+    def __sub__(self, other):
+        return self.samples - other
+
+    def __rsub__(self, other):
+        return other - self.samples
+
+    def __mul__(self, other):
+        return self.samples * other
+
+    def __rmul__(self, other):
+        return other * self.samples
+
+    def __truediv__(self, other):
+        return self.samples / other
+
+    def __rtruediv__(self, other):
+        return other / self.samples
+
+    def __floordiv__(self, other):
+        return self.samples / other
+
+    def __rfloordiv__(self, other):
+        return other / self.samples
+
+    def __mod__(self, other):
+        return self.samples % other
+
+    def __rmod__(self, other):
+        return other % self.samples
+
+    def __pow__(self, other):
+        return pow(self.samples, other)
+
+    def __rpow__(self, other):
+        return pow(other, self.samples)
+
+    def __round__(self, ndigits=0):
+        return self.samples.round(ndigits)
+
+    def __ceil__(self):
+        return np.ceil(self.samples)
+
+    def __floor__(self):
+        return np.floor(self.samples)
+
+    def __trunc__(self):
+        return np.trunc(self.samples)
+
+    def __neg__(self):
+        return -self.samples
+
+    def __pos__(self):
+        return +self.samples
+
+    def __abs__(self):
+        return np.abs(self.samples)
+
+     def __iadd__(self, other):
+         self.samples = self.samples + other
+         return self
+
+     def __isub__(self, other):
+         self.samples = self.samples - other
+         return self
+         
+     def __imul__(self, other):
+         self.samples = self.samples * other
+         return self
+
+     def __itruediv__(self, other):
+         self.samples = self.samples / other
+         return self
+
+     def __ifloordiv__(self, other):
+         self samples = self.samples // other
+         return self
+     
+     def __imod__(self, other):
+         self.samples = self.samples % other
+         return self
+
+     def __ipow__(self, other):
+         self.samples = self.samples ** other         
 
     @property
     def idt(self):
