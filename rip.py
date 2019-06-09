@@ -130,32 +130,32 @@ class Sampled:
     def __abs__(self):
         return np.abs(self.samples)
 
-     def __iadd__(self, other):
-         self.samples = self.samples + other
-         return self
+    def __iadd__(self, other):
+        self.samples = self.samples + other
+        return self
 
-     def __isub__(self, other):
-         self.samples = self.samples - other
-         return self
-         
-     def __imul__(self, other):
-         self.samples = self.samples * other
-         return self
+    def __isub__(self, other):
+        self.samples = self.samples - other
+        return self
 
-     def __itruediv__(self, other):
-         self.samples = self.samples / other
-         return self
+    def __imul__(self, other):
+        self.samples = self.samples * other
+        return self
 
-     def __ifloordiv__(self, other):
-         self samples = self.samples // other
-         return self
-     
-     def __imod__(self, other):
-         self.samples = self.samples % other
-         return self
+    def __itruediv__(self, other):
+        self.samples = self.samples / other
+        return self
 
-     def __ipow__(self, other):
-         self.samples = self.samples ** other         
+    def __ifloordiv__(self, other):
+        self samples = self.samples // other
+        return self
+    
+    def __imod__(self, other):
+        self.samples = self.samples % other
+        return self
+    
+    def __ipow__(self, other):
+        self.samples = self.samples ** other
 
     @property
     def idt(self):
