@@ -41,7 +41,7 @@ def main(wav_path, out_dir):
     # Read the respiratory signal, detrend it, identify cycles and
     # holds.
     resp = Resp.from_wav(wav_path)
-    resp.remove_baseline_als()
+    resp.remove_baseline(method='als')
     resp.find_cycles(include_holds=True)
     resp.estimate_rel(dynamic=True)
     resp.estimate_range()

@@ -147,7 +147,7 @@ class Sampled:
         return self
 
     def __ifloordiv__(self, other):
-        self samples = self.samples // other
+        self.samples = self.samples // other
         return self
     
     def __imod__(self, other):
@@ -213,14 +213,14 @@ class Resp(Sampled):
 
         self.samples = scipy.signal.detrend(self.samples, type=type)
 
-    def remove_baseline_square(self, win_len=60):
+    def baseline_square(self, win_len=60):
         """Remove low-frequency baseline fluctuation using a rectangular
         window
         """
         baseline = self._fft_smooth(win_len * self.samp_freq)
-        self.samples = self.samples - baseline
+        return Sampled(baseline, self.samp_freq)
 
-    def remove_baseline_savgol(self, win_len=60, order=3):
+    def baseline_savgol(self, win_len=60, order=3):
         """Remove low-frequency baseline fluctuation using a Savitzky-Golay
         filter.
         """
@@ -228,9 +228,9 @@ class Resp(Sampled):
         if win % 2 == 0:
             win += 1
         baseline = scipy.signal.savgol_filter(self.samples, win, order)
-        self.samples = self.samples - baseline
+        return Sampled(baseline, self.samp_freq)
 
-    def remove_baseline_als(self, lam=1e10, p=0.01, niter=10):
+    def baseline_als(self, lam=1e10, p=0.01, niter=10):
         """Remove baseline fluctuation using Asymmetric Least Squares
         Smoothing. The default values of `lam` (smoothness) and `p`
         (assymetry) might have to be adjusted.
@@ -246,7 +246,19 @@ class Resp(Sampled):
             Z = W + lam * D.dot(D.transpose())
             z = scipy.sparse.linalg.spsolve(Z, w * self.samples)
             w = p * (self.samples > z) + (1 - p) * (self.samples < z)
-        self.samples = self.samples - z
+        return Sampled(z, self.samp_freq)
+
+    def remove_baseline(self, method, **kwargs):
+
+        if method == 'als':
+            fn = self.baseline_als
+        elif method == 'square':
+            fn = self.baseline_square
+        elif method == 'savgol':
+            fn = self.baseline_savgol
+
+        baseline = fn(**kwargs)
+        self.samples = self.samples - baseline
 
     def scale(self):
         """Scale the signal by subtracting the mean and dividing
@@ -494,7 +506,7 @@ class Resp(Sampled):
         else:
             rel = np.median(self.idt[self.troughs])
 
-        self.samples = self.samples - rel
+        return Sampled(rel, self.samp_freq)
 
     # == Feature extraction ==
 
