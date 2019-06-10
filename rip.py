@@ -509,7 +509,7 @@ class Resp(Sampled):
             interp = UnivariateSpline(self.troughs, troughs_med, k=3, s=0)
             rel = interp(np.linspace(0, self.t[-1], len(self)))
         else:
-            rel = np.median(self.idt[self.troughs])
+            rel = np.full(len(self), np.median(self.idt[self.troughs]))
 
         return Sampled(rel, self.samp_freq)
 
