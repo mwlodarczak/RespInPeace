@@ -214,14 +214,14 @@ class Resp(Sampled):
         self.samples = scipy.signal.detrend(self.samples, type=type)
 
     def baseline_square(self, win_len=60):
-        """Remove low-frequency baseline fluctuation using a rectangular
+        """Calculate low-frequency baseline fluctuation using a rectangular
         window
         """
         baseline = self._fft_smooth(win_len * self.samp_freq)
         return Sampled(baseline, self.samp_freq)
 
     def baseline_savgol(self, win_len=60, order=3):
-        """Remove low-frequency baseline fluctuation using a Savitzky-Golay
+        """Calculate low-frequency baseline fluctuation using a Savitzky-Golay
         filter.
         """
         win = win_len * self.samp_freq
@@ -231,7 +231,7 @@ class Resp(Sampled):
         return Sampled(baseline, self.samp_freq)
 
     def baseline_als(self, lam=1e10, p=0.01, niter=10):
-        """Remove baseline fluctuation using Asymmetric Least Squares
+        """Calculate baseline fluctuation using Asymmetric Least Squares
         Smoothing. The default values of `lam` (smoothness) and `p`
         (assymetry) might have to be adjusted.
 
@@ -249,6 +249,8 @@ class Resp(Sampled):
         return Sampled(z, self.samp_freq)
 
     def remove_baseline(self, method, **kwargs):
+        """"Remove baseline fluctuations using the specified method:
+        `'als'`, `'square'`, or `'savgol'`."""
 
         if method == 'als':
             fn = self.baseline_als
@@ -256,6 +258,9 @@ class Resp(Sampled):
             fn = self.baseline_square
         elif method == 'savgol':
             fn = self.baseline_savgol
+        else:
+            raise ValueError('Unsupported baseline caluclation method ' +
+                             method)
 
         baseline = fn(**kwargs)
         self.samples = self.samples - baseline
