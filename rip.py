@@ -737,10 +737,10 @@ class TimeIndexer:
         sample is returned."""
 
         if method == 'nearest':
-            return np.round(t * self.samp_freq).astype(np.int) - 1
+            return np.round(t * self.samp_freq).astype(np.int)
         elif method == 'ceil':
-            return np.ceil(t * self.samp_freq).astype(np.int) - 1
+            return np.ceil(t * self.samp_freq).astype(np.int)
         elif method == 'floor':
-            return np.floor(t * self.samp_freq).astype(np.int) - 1
+            return np.floor(t * self.samp_freq).astype(np.int)
         else:
             raise ValueError('Unknown method: {}'.format(method))
