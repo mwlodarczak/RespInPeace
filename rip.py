@@ -239,7 +239,7 @@ class Resp(Sampled):
         (https://stackoverflow.com/users/12345/torne)
         """
         L = len(self.samples)
-        D = scipy.sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L-2))
+        D = scipy.sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
         w = np.ones(L)
         for i in range(niter):
             W = scipy.sparse.spdiags(w, 0, L, L)
@@ -486,32 +486,45 @@ class Resp(Sampled):
         self.range_top = np.percentile(self.idt[self.peaks], top)
         self.range = self.range_top - self.range_bot
 
-    def estimate_rel(self, dynamic=False, win_len=11):
+    def estimate_rel(self, method='static', win_len=60, min_obs=3,
+                     fn=np.median):
         """Estimate REL (resting expiratory level).
+
 
         If `dynamic==False`, REL is calculated as the median value of
         all troughs in the resiratory signal. Otherwise, REL is
-        estimated in a dynamic fashion to allow for posture shifts.
-        This is done by calculating the median level of all troughs in
-        a window of specified size (by default, `win_len=11`, i.e. REL
-        is calcualte as the median level of five preceding and five
-        following troughs).
+        estimated in a dynamic fashion to allow for posture shifts,
+        for example. This is done by applying `fn` (`np.median`, by default) of
+        all troughs in a window of specified size (in seconds).
         """
 
-        if self.troughs is None:
-            raise ValueError('The value self.troughs is None.')
+        if method == 'dynamic':
+            # lookbehind_samp = lookbehind * self.samp_freq
+            troughs_med = np.zeros(len(self.troughs))
 
-        if dynamic:
-            if win_len % 2 != 1:
-                raise ValueError('Window length must be odd.')
+            for i, trough in enumerate(self.troughs):
 
-            troughs_med = scipy.signal.medfilt(self.idt[self.troughs], win_len)
-            interp = UnivariateSpline(self.troughs, troughs_med, k=3, s=0)
+                prev_troughs = self.troughs[np.logical_and(
+                    self.troughs <= trough + win_len / 2,
+                    self.troughs >= trough - win_len / 2)]
+
+                if len(prev_troughs) >= min_obs:
+                    troughs_med[i] = fn(self.idt[prev_troughs])
+                else:
+                    troughs_med[i] = np.nan
+
+            mask = ~np.isnan(troughs_med)
+            interp = UnivariateSpline(self.troughs[mask], troughs_med[mask],
+                                      k=3, s=0, ext=3)
             rel = interp(np.linspace(0, self.t[-1], len(self)))
-        else:
-            rel = np.full(len(self), np.median(self.idt[self.troughs]))
 
-        return Sampled(rel, self.samp_freq)
+        elif method == 'static':
+            rel = np.full(len(self), np.median(self.idt[self.troughs]))
+        else:
+            raise ValueError('Unsupported REL calculation method: ' +
+                             self.method)
+
+        return rel
 
     # == Feature extraction ==
 
