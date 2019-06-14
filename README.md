@@ -30,6 +30,10 @@ Additionally, some examples of how to use RespInPeace are included in [`notebook
 
 ## Citation
 
+>>>
+Włodarczak, Marcin (2019). RespInPeace: Toolkit for processing respiratory belt data. In M. Heldner (Ed.) *Proceedings of Fonetik 2019* (pp. 115–118). Stockholm, Sweden. doi: [10.5281/zenodo.3246019](https://doi.org/10.5281/zenodo.3246019)
+>>>
+
 You can cite a specific release of RespInPeace using its DOI. The DOI of the latest release can be found [here](https://doi.org/10.5281/zenodo.2539335). If for some reason you do not want to refer to a specific release, you can use 10.5281/zenodo.2539335 to refer to all versions.
 
 ## Acknowledgments
