@@ -378,6 +378,15 @@ class Resp(Sampled):
 
     def find_holds(self, min_hold_dur=0.25, min_hold_gap=0.15,
                    peak_prominence=0.05, bins=100):
+        """Locate respiratory holds.
+
+        The method is based on the original MATLAB implementation in
+        Breathmetrics (https://github.com/zelanolab/breathmetrics),
+        adapted to the RIP signal. See also: Noto T, Zhou G, Schuele
+        S, Templer J, & Zelano C (2018) Automated analysis of
+        breathing waveforms using BreathMetrics: a respiratory signal
+        processing toolbox. Chemical Senses (in press).
+        """
 
         self._filt = self.filter_lowpass(cutoff=3, order=8, inplace=False)
         # self._filt = self.res
@@ -463,11 +472,13 @@ class Resp(Sampled):
 
     @property
     def troughs(self):
+        """Return timepoints of all respiratory troughs."""
         return np.array([i.start_time for i in self.segments if i.text == 'in']
                         + [self.segments[-1].end_time])
 
     @property
     def peaks(self):
+        """Return timepoints of all respiratory peaks."""
         return np.array([i.start_time for i in self.segments
                          if i.text == 'out'])
 
@@ -529,6 +540,9 @@ class Resp(Sampled):
     # == Feature extraction ==
 
     def extract_amplitude(self, start, end, norm=True):
+        """Calculate amplitude of the signal between start and end points. If
+        `norm=True`, the value is normalised by the respiratory range.
+        """
 
         if norm:
             return (self.idt[end] - self.idt[start]) / self.range
@@ -536,11 +550,17 @@ class Resp(Sampled):
             return self.idt[end] - self.idt[end]
 
     def extract_slope(self, start, end, norm=True):
+        """Calculate slope of the signal between start and end points.  If
+        `norm=True`, the value is normalised by the respiratory range."""
 
         dur = end - start
         return self.extract_amplitude(start, end, norm) / dur
 
     def extract_level_norm(self, t):
+        """Calculate respiratory level at the specified time points relative
+        to REL, normalised by the respiratory range.
+
+        """
 
         return self.idt[t] / self.range
 
