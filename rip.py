@@ -755,9 +755,9 @@ class TimeIndexer:
             return self.samples[idx]
         elif isinstance(key, slice):
             start = self._time_to_sample(key.start, method='ceil')
-            end = self._time_to_sample(key.stop, method='floor')
+            end = self._time_to_sample(key.stop, method='floor') + 1
             if key.step is not None:
-                step = self._time_to_sample(key.step)
+                step = self._time_to_sample(key.step, method='nearest') + 1
             else:
                 step = key.step
             return self.samples[start:end:step]
