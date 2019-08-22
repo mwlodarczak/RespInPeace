@@ -50,7 +50,7 @@ class Sampled:
         else:
             self.samples = data
         self.samp_freq = samp_freq
-        self.t = np.arange(len(self)) / self.samp_freq
+        self.t = np.arange(1, len(self) + 1) / self.samp_freq
         self.dur = len(self) / self.samp_freq
 
     def __getitem__(self, key):
@@ -527,7 +527,7 @@ class Resp(Sampled):
             mask = ~np.isnan(troughs_med)
             interp = UnivariateSpline(self.troughs[mask], troughs_med[mask],
                                       k=3, s=0, ext=3)
-            rel = interp(np.linspace(0, self.t[-1], len(self)))
+            rel = interp(np.linspace(1, self.dur, len(self)))
 
         elif method == 'static':
             rel = np.full(len(self), np.median(self.idt[self.troughs]))
