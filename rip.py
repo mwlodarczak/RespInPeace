@@ -547,7 +547,7 @@ class Resp(Sampled):
         if norm:
             return (self.idt[end] - self.idt[start]) / self.range
         else:
-            return self.idt[end] - self.idt[end]
+            return self.idt[end] - self.idt[start]
 
     def extract_slope(self, start, end, norm=True):
         """Calculate slope of the signal between start and end points.  If
