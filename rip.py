@@ -556,13 +556,16 @@ class Resp(Sampled):
         dur = end - start
         return self.extract_amplitude(start, end, norm) / dur
 
-    def extract_level_norm(self, t):
+    def extract_level(self, t, norm=True):
         """Calculate respiratory level at the specified time points relative
         to REL, normalised by the respiratory range.
 
         """
 
-        return self.idt[t] / self.range
+        if norm:
+            return self.idt[t] / self.range
+        else:
+            return self.idt[t]
 
     def extract_features(self, start, end, norm=True):
         """Extract all features for the given interval."""
@@ -570,8 +573,8 @@ class Resp(Sampled):
         features = {'duration': end - start,
                     'amplitude': self.extract_amplitude(start, end, norm),
                     'slope': self.extract_slope(start, end, norm),
-                    'onset_level': self.extract_level_norm(start),
-                    'offset_level': self.extract_level_norm(end)}
+                    'onset_level': self.extract_level(start, norm),
+                    'offset_level': self.extract_level(end, norm)}
         return features
 
     # == Calibration methods ==
