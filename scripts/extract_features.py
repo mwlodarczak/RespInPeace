@@ -43,7 +43,7 @@ def main(wav_path, out_dir):
     resp = Resp.from_wav(wav_path)
     resp.remove_baseline(method='als')
     resp.find_cycles(include_holds=True)
-    resp.estimate_rel(method='dynamic')
+    resp.samples = resp.samples - resp.estimate_rel(method='dynamic')
     resp.estimate_range()
 
     fname = os.path.splitext(os.path.basename(wav_path))[0]
